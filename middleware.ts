@@ -1,17 +1,32 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { NextResponse, type NextRequest } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+/**
+ * Protege /dashboard e /studio checando apenas a presença do cookie de sessão
+ * (sem consultar o banco — leve e compatível com o Edge). A validação real da
+ * sessão acontece no servidor das páginas protegidas (auth.api.getSession).
+ */
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isProtected =
+    pathname.startsWith("/dashboard") || pathname.startsWith("/studio");
+
+  if (!isProtected) {
+    return NextResponse.next();
+  }
+
+  const sessionCookie = getSessionCookie(request);
+
+  if (!sessionCookie) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Casa com todas as rotas exceto:
-     * - _next/static, _next/image
-     * - favicon e arquivos de imagem
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/dashboard/:path*", "/studio/:path*"],
 };

@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      // Supabase Storage (imagens de capítulos/capa) — ajustar host após criar o projeto.
-      { protocol: "https", hostname: "*.supabase.co" },
+      // Vercel Blob (imagens de capítulos/capa) — usado a partir da Fase 8.
+      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
     ],
   },
 };

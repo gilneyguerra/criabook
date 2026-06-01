@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { BookPlus } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,24 +8,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-type BookRow = {
-  id: string;
-  title: string | null;
-  genre: string | null;
-  status: string | null;
-  updated_at: string | null;
-};
-
-export default async function DashboardPage() {
-  const supabase = await createClient();
-
-  // A tabela `books` é criada na Fase 1. Até lá, tratamos erro como lista vazia.
-  const { data, error } = await supabase
-    .from("books")
-    .select("id, title, genre, status, updated_at")
-    .order("updated_at", { ascending: false });
-
-  const books: BookRow[] = error ? [] : (data ?? []);
+export default function DashboardPage() {
+  // A tabela `books` e a listagem real chegam na Fase 1 (modelo de dados).
+  const books: { id: string; title: string }[] = [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,22 +36,7 @@ export default async function DashboardPage() {
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {books.map((book) => (
-            <Link key={book.id} href={`/studio/${book.id}`}>
-              <Card className="h-full transition-colors hover:border-foreground/30">
-                <CardHeader>
-                  <CardTitle>{book.title ?? "Sem título"}</CardTitle>
-                  <CardDescription>
-                    {book.genre ?? "—"} · {book.status ?? "draft"}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

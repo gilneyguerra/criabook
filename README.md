@@ -4,10 +4,13 @@ App web onde o usuário paga em créditos e gera um livro completo por IA: escri
 
 ## Stack
 - **Next.js 15** (App Router) + **React 19** + **TypeScript**
-- **Tailwind CSS v4** + **shadcn/ui**
-- **Supabase** (Postgres + Auth + Storage + Realtime + pgvector)
+- **Tailwind CSS v4** + **shadcn/ui** + **framer-motion**
+- **Neon** (Postgres serverless + pgvector) via **Drizzle ORM**
+- **Better Auth** (auth no próprio banco) · **Vercel Blob** (storage)
 - **Claude API** (texto) · **Replicate/fal** (imagens) · **Stripe** (créditos) · **Trigger.dev** (jobs)
-- Deploy: **Vercel**
+- Deploy: **Vercel** · Progresso de geração via **SSE + polling**
+
+> Autorização sem RLS: toda query de dados do usuário é escopada por `userId` da sessão na camada de aplicação.
 
 ## Documentos de planejamento
 - [`PLANO_DE_IMPLEMENTACAO_GERADOR_DE_LIVROS_IA.md`](./PLANO_DE_IMPLEMENTACAO_GERADOR_DE_LIVROS_IA.md) — especificação técnica completa.
@@ -23,8 +26,8 @@ npm run dev
 ```
 
 ## Progresso por fase
-- [x] **Fase 0** — Fundação: Next.js + Tailwind + shadcn + Supabase + Auth + dashboard (em andamento)
-- [ ] Fase 1 — Modelo de dados (Supabase + RLS + pgvector)
+- [x] **Fase 0** — Fundação: Next.js + Tailwind + shadcn + Neon/Drizzle + Better Auth + dashboard
+- [ ] Fase 1 — Modelo de dados (Drizzle + pgvector + autorização por userId)
 - [ ] Fase 2 — Créditos + Stripe
 - [ ] Fase 3 — Construtor de prompt
 - [ ] Fase 4 — Geração de capítulo com streaming

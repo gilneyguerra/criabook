@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import { login, type AuthState } from "../actions";
+import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,14 +18,34 @@ import {
 } from "@/components/ui/card";
 
 export function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") ?? "/dashboard";
   const justSignedUp = searchParams.get("cadastro") === "ok";
 
-  const [state, formAction, pending] = useActionState<AuthState, FormData>(
-    login,
-    null
-  );
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setPending(true);
+
+    const formData = new FormData(e.currentTarget);
+    const { error } = await signIn.email({
+      email: String(formData.get("email")),
+      password: String(formData.get("password")),
+    });
+
+    if (error) {
+      setError("E-mail ou senha inválidos.");
+      setPending(false);
+      return;
+    }
+
+    router.push(redirectTo);
+    router.refresh();
+  }
 
   return (
     <Card className="w-full max-w-sm">
@@ -33,14 +53,13 @@ export function LoginForm() {
         <CardTitle>Entrar</CardTitle>
         <CardDescription>Acesse sua conta do CriaBook.</CardDescription>
       </CardHeader>
-      <form action={formAction}>
+      <form onSubmit={handleSubmit}>
         <CardContent className="flex flex-col gap-4">
           {justSignedUp && (
             <p className="rounded-md bg-secondary px-3 py-2 text-sm">
-              Conta criada! Confirme seu e-mail (se necessário) e entre.
+              Conta criada! Faça login para continuar.
             </p>
           )}
-          <input type="hidden" name="redirect" value={redirectTo} />
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">E-mail</Label>
             <Input id="email" name="email" type="email" required />
@@ -49,9 +68,7 @@ export function LoginForm() {
             <Label htmlFor="password">Senha</Label>
             <Input id="password" name="password" type="password" required />
           </div>
-          {state?.error && (
-            <p className="text-sm text-destructive">{state.error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="mt-6 flex-col gap-3">
           <Button type="submit" className="w-full" disabled={pending}>

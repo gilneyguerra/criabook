@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { signup, type AuthState } from "../actions";
+import { signUp } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,20 +18,44 @@ import {
 } from "@/components/ui/card";
 
 export default function CadastroPage() {
-  const [state, formAction, pending] = useActionState<AuthState, FormData>(
-    signup,
-    null
-  );
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    const formData = new FormData(e.currentTarget);
+    const password = String(formData.get("password"));
+    if (password.length < 8) {
+      setError("A senha precisa ter ao menos 8 caracteres.");
+      return;
+    }
+
+    setPending(true);
+    const { error } = await signUp.email({
+      name: String(formData.get("display_name")),
+      email: String(formData.get("email")),
+      password,
+    });
+
+    if (error) {
+      setError("Não foi possível criar a conta. Tente outro e-mail.");
+      setPending(false);
+      return;
+    }
+
+    router.push("/login?cadastro=ok");
+  }
 
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
         <CardTitle>Criar conta</CardTitle>
-        <CardDescription>
-          Comece a escrever seu livro com IA.
-        </CardDescription>
+        <CardDescription>Comece a escrever seu livro com IA.</CardDescription>
       </CardHeader>
-      <form action={formAction}>
+      <form onSubmit={handleSubmit}>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="display_name">Nome</Label>
@@ -53,9 +78,7 @@ export default function CadastroPage() {
               Mínimo de 8 caracteres.
             </p>
           </div>
-          {state?.error && (
-            <p className="text-sm text-destructive">{state.error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="mt-6 flex-col gap-3">
           <Button type="submit" className="w-full" disabled={pending}>
