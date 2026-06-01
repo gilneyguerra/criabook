@@ -24,3 +24,9 @@
 **Causa:** o `better-auth` referencia internamente um adapter Kysely (dialeto `node:sqlite`) que não usamos (usamos Drizzle/Postgres). O webpack tenta empacotar esse caminho server-only e quebra na resolução ESM.
 **Correção:** em `next.config.ts`, `serverExternalPackages: ["better-auth", "@better-auth/kysely-adapter"]` — Next não empacota; o Node resolve em runtime.
 **Lição:** libs server-only com cadeias de dependência opcionais (auth, db) costumam precisar entrar em `serverExternalPackages` no Next 15 em vez de serem empacotadas pelo webpack.
+
+## 2026-06-01 — Vercel: No Output Directory named "public"
+**Erro:** o build do Next concluiu (rotas compiladas), mas a Vercel falhou no final: `No Output Directory named "public" found`.
+**Causa:** o **Framework Preset** do projeto na Vercel estava como "Other" (não "Next.js"), então procurava uma pasta `public` em vez do output `.next`.
+**Correção:** `vercel.json` com `{"framework":"nextjs"}` + setar **Framework Preset = Next.js** em Vercel → Settings → Build & Deployment (e deixar Output Directory no padrão, não "public").
+**Lição:** se o build do Next passa mas a Vercel reclama de output dir, é detecção de framework — não código. Garantir Framework Preset = Next.js.
