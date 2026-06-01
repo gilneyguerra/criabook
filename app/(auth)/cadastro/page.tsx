@@ -41,7 +41,11 @@ export default function CadastroPage() {
     });
 
     if (error) {
-      setError("Não foi possível criar a conta. Tente outro e-mail.");
+      setError(
+        error.message
+          ? `Erro: ${error.message}`
+          : "Não foi possível criar a conta. Tente outro e-mail."
+      );
       setPending(false);
       return;
     }
