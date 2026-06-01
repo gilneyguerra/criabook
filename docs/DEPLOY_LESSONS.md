@@ -12,3 +12,8 @@
 - `drizzle-kit` → `^0.31.4`
 - `better-auth` → `^1.6.13`
 **Lição:** ao adicionar libs com peers (Better Auth, Drizzle), conferir os ranges de peer dependency entre elas antes do push. Sem lockfile commitado, o npm resolve do zero na Vercel — os ranges do `package.json` precisam ser coerentes.
+
+## 2026-06-01 — Segundo conflito: better-auth adapter × drizzle-orm
+**Erro:** `@better-auth/drizzle-adapter@1.6.13` declara `peerOptional drizzle-orm@"^0.45.2"`, mas o projeto tinha `drizzle-orm@^0.44.2` (resolvido 0.44.7).
+**Correção:** `drizzle-orm` → `^0.45.2`.
+**Lição:** o piso do `drizzle-orm` é ditado pelo **adapter** do Better Auth, não só pelo `drizzle-kit`. Ao subir `better-auth`, alinhar `drizzle-orm` ao peer do adapter (`@better-auth/drizzle-adapter`), não apenas ao `drizzle-kit`.
