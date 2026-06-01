@@ -27,7 +27,7 @@ npm run dev
 
 ## Progresso por fase
 - [x] **Fase 0** — Fundação: Next.js + Tailwind + shadcn + Neon/Drizzle + Better Auth + dashboard
-- [ ] Fase 1 — Modelo de dados (Drizzle + pgvector + autorização por userId)
+- [x] **Fase 1** — Modelo de dados: schema Drizzle completo + pgvector + autorização por `userId` *(falta rodar a migration no Neon)*
 - [ ] Fase 2 — Créditos + Stripe
 - [ ] Fase 3 — Construtor de prompt
 - [ ] Fase 4 — Geração de capítulo com streaming

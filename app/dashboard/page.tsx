@@ -1,5 +1,9 @@
+import Link from "next/link";
+import { headers } from "next/headers";
 import { BookPlus } from "lucide-react";
 
+import { auth } from "@/lib/auth";
+import { getUserBooks } from "@/lib/db/queries";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,9 +12,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default function DashboardPage() {
-  // A tabela `books` e a listagem real chegam na Fase 1 (modelo de dados).
-  const books: { id: string; title: string }[] = [];
+export default async function DashboardPage() {
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  let books: Awaited<ReturnType<typeof getUserBooks>> = [];
+  if (session) {
+    try {
+      books = await getUserBooks(session.user.id);
+    } catch {
+      // Tabelas ainda não migradas: degrada para lista vazia.
+      books = [];
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -21,6 +34,7 @@ export default function DashboardPage() {
             Crie um novo livro ou continue um rascunho.
           </p>
         </div>
+        {/* A criação de livro é habilitada na Fase 3 (construtor de prompt). */}
         <Button disabled>
           <BookPlus className="size-4" />
           Novo livro
@@ -36,7 +50,22 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : null}
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {books.map((book) => (
+            <Link key={book.id} href={`/studio/${book.id}`}>
+              <Card className="h-full transition-colors hover:border-foreground/30">
+                <CardHeader>
+                  <CardTitle>{book.title ?? "Sem título"}</CardTitle>
+                  <CardDescription>
+                    {book.genre ?? "—"} · {book.status}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

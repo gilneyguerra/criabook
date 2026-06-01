@@ -1,14 +1,20 @@
 import {
   pgTable,
+  pgEnum,
   text,
   timestamp,
   boolean,
+  integer,
+  numeric,
+  jsonb,
+  uuid,
+  vector,
+  index,
 } from "drizzle-orm/pg-core";
 
-/**
- * Tabelas do Better Auth (auth por e-mail/senha + OAuth).
- * As tabelas de domínio do CriaBook (books, chapters, keywords...) entram na Fase 1.
- */
+/* ============================================================
+ * Better Auth — auth por e-mail/senha + OAuth
+ * ============================================================ */
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -58,4 +64,217 @@ export const verification = pgTable("verification", {
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+/* ============================================================
+ * Enums de domínio
+ * ============================================================ */
+
+export const bookStatus = pgEnum("book_status", [
+  "draft",
+  "generating",
+  "review",
+  "done",
+]);
+
+export const pageNumberPosition = pgEnum("page_number_position", [
+  "top-left",
+  "top-center",
+  "top-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+]);
+
+export const chapterStatus = pgEnum("chapter_status", [
+  "pending",
+  "generating",
+  "review",
+  "done",
+]);
+
+export const keywordCategory = pgEnum("keyword_category", [
+  "genre",
+  "character_role",
+  "plot_twist",
+  "tone",
+  "setting",
+  "theme",
+]);
+
+export const jobStatus = pgEnum("job_status", [
+  "queued",
+  "running",
+  "done",
+  "error",
+]);
+
+export const exportFormat = pgEnum("export_format", [
+  "pdf_web",
+  "pdf_print",
+  "epub",
+]);
+
+/* ============================================================
+ * Tabelas de domínio (CriaBook)
+ * Autorização é feita na aplicação: toda query filtra por owner/userId.
+ * ============================================================ */
+
+// Estende o usuário do Better Auth com dados de produto.
+export const profiles = pgTable("profiles", {
+  id: text("id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  displayName: text("display_name"),
+  birthDate: timestamp("birth_date"),
+  isAdultVerified: boolean("is_adult_verified").notNull().default(false),
+  creditsBalance: integer("credits_balance").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const books = pgTable("books", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  title: text("title"),
+  genre: text("genre"),
+  language: text("language").notNull().default("pt-BR"),
+  isAdult: boolean("is_adult").notNull().default(false),
+  status: bookStatus("status").notNull().default("draft"),
+  pageTarget: integer("page_target"),
+  pageNumberPosition: pageNumberPosition("page_number_position")
+    .notNull()
+    .default("bottom-center"),
+  brief: jsonb("brief"), // book_brief montado no construtor de prompt (Fase 3)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const bookMeta = pgTable("book_meta", {
+  bookId: uuid("book_id")
+    .primaryKey()
+    .references(() => books.id, { onDelete: "cascade" }),
+  dedication: text("dedication"),
+  backCoverText: text("back_cover_text"),
+  authorName: text("author_name"),
+  coverDesign: jsonb("cover_design"), // estado do canvas da capa (Fase 9)
+});
+
+export const chapters = pgTable("chapters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  index: integer("index").notNull(),
+  title: text("title"),
+  subtitle: text("subtitle"),
+  contentJson: jsonb("content_json"), // documento TipTap/ProseMirror
+  contentText: text("content_text"), // texto puro p/ busca/contagem
+  status: chapterStatus("status").notNull().default("pending"),
+  tokensUsed: integer("tokens_used").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const chapterImages = pgTable("chapter_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  chapterId: uuid("chapter_id")
+    .notNull()
+    .references(() => chapters.id, { onDelete: "cascade" }),
+  storagePath: text("storage_path").notNull(), // Vercel Blob URL/key
+  prompt: text("prompt"),
+  model: text("model"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const storyBeats = pgTable("story_beats", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  order: integer("order").notNull(),
+  title: text("title"),
+  summary: text("summary"),
+  beatType: text("beat_type"),
+  linkedChapterId: uuid("linked_chapter_id").references(() => chapters.id, {
+    onDelete: "set null",
+  }),
+});
+
+export const versions = pgTable("versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  chapterId: uuid("chapter_id").references(() => chapters.id, {
+    onDelete: "set null",
+  }),
+  label: text("label"),
+  snapshot: jsonb("snapshot").notNull(), // estado completo no momento
+  diff: jsonb("diff"), // diff em relação à versão anterior
+  createdBy: text("created_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const keywords = pgTable(
+  "keywords",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    category: keywordCategory("category").notNull(),
+    value: text("value").notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    usageCount: integer("usage_count").notNull().default(1),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    isGlobal: boolean("is_global").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Busca por similaridade semântica (cosine). Requer extensão `vector`.
+    index("keywords_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops")
+    ),
+  ]
+);
+
+export const creditLedger = pgTable("credit_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  delta: integer("delta").notNull(), // + compra, - consumo
+  reason: text("reason").notNull(),
+  refId: text("ref_id"), // id da operação relacionada (job, checkout...)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const generationJobs = pgTable("generation_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // 'structure' | 'chapter' | 'image' | ...
+  status: jobStatus("status").notNull().default("queued"),
+  progress: integer("progress").notNull().default(0),
+  tokensIn: integer("tokens_in").notNull().default(0),
+  tokensOut: integer("tokens_out").notNull().default(0),
+  costEstimate: numeric("cost_estimate"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const exports = pgTable("exports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  format: exportFormat("format").notNull(),
+  storagePath: text("storage_path").notNull(), // Vercel Blob URL/key
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
