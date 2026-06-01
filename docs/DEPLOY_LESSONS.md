@@ -17,3 +17,10 @@
 **Erro:** `@better-auth/drizzle-adapter@1.6.13` declara `peerOptional drizzle-orm@"^0.45.2"`, mas o projeto tinha `drizzle-orm@^0.44.2` (resolvido 0.44.7).
 **Correção:** `drizzle-orm` → `^0.45.2`.
 **Lição:** o piso do `drizzle-orm` é ditado pelo **adapter** do Better Auth, não só pelo `drizzle-kit`. Ao subir `better-auth`, alinhar `drizzle-orm` ao peer do adapter (`@better-auth/drizzle-adapter`), não apenas ao `drizzle-kit`.
+
+## 2026-06-01 — Webpack: 'DEFAULT_MIGRATION_TABLE' is not exported from 'kysely'
+**Erro:** build do Next falhou no webpack ao empacotar
+`@better-auth/kysely-adapter/dist/node-sqlite-dialect.mjs` (cadeia `lib/auth.ts` → `api/auth/[...all]`): `Attempted import error: 'DEFAULT_MIGRATION_TABLE' is not exported from 'kysely'`.
+**Causa:** o `better-auth` referencia internamente um adapter Kysely (dialeto `node:sqlite`) que não usamos (usamos Drizzle/Postgres). O webpack tenta empacotar esse caminho server-only e quebra na resolução ESM.
+**Correção:** em `next.config.ts`, `serverExternalPackages: ["better-auth", "@better-auth/kysely-adapter"]` — Next não empacota; o Node resolve em runtime.
+**Lição:** libs server-only com cadeias de dependência opcionais (auth, db) costumam precisar entrar em `serverExternalPackages` no Next 15 em vez de serem empacotadas pelo webpack.
