@@ -30,3 +30,9 @@
 **Causa:** o **Framework Preset** do projeto na Vercel estava como "Other" (não "Next.js"), então procurava uma pasta `public` em vez do output `.next`.
 **Correção:** `vercel.json` com `{"framework":"nextjs"}` + setar **Framework Preset = Next.js** em Vercel → Settings → Build & Deployment (e deixar Output Directory no padrão, não "public").
 **Lição:** se o build do Next passa mas a Vercel reclama de output dir, é detecção de framework — não código. Garantir Framework Preset = Next.js.
+
+## 2026-06-01 — Vercel: "Vulnerable version of Next.js detected"
+**Erro:** a Vercel bloqueou o deploy: `Vulnerable version of Next.js detected, please update immediately`.
+**Causa:** `next@15.1.3` tem CVEs conhecidos — destaque para CVE-2025-29927 (bypass de autorização no middleware, corrigido no 15.2.3). Como o app usa middleware para proteger rotas, é crítico.
+**Correção:** `next` e `eslint-config-next` → `^15.5.0` (bem além dos patches).
+**Lição:** fixar Next em versão patcheada desde o início; a Vercel barra versões vulneráveis. Conferir advisories antes de pinar uma versão exata.
