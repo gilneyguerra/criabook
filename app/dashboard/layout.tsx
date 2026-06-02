@@ -5,6 +5,7 @@ import { BookOpen } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
+import { SeaOfWords } from "@/components/ui/sea-of-words";
 
 export default async function DashboardLayout({
   children,
@@ -18,8 +19,8 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b px-6 py-4">
+    <div className="relative flex min-h-screen flex-col">
+      <header className="relative z-10 flex items-center justify-between border-b bg-background/80 px-6 py-4 backdrop-blur">
         <Link
           href="/dashboard"
           className="flex items-center gap-2 font-semibold"
@@ -34,9 +35,13 @@ export default async function DashboardLayout({
           <LogoutButton />
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-        {children}
-      </main>
+      <div className="relative flex-1">
+        {/* "Mar de palavras": fundo sutil atrás do conteúdo. */}
+        <SeaOfWords />
+        <main className="relative z-10 mx-auto w-full max-w-5xl px-6 py-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
