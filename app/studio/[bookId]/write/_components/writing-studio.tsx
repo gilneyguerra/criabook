@@ -15,6 +15,7 @@ import {
   PenLine,
   History,
   Download,
+  ImageIcon,
 } from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
@@ -55,6 +56,8 @@ export function WritingStudio({
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [recovery, setRecovery] = useState<Draft | null>(null);
+  const [illustrating, setIllustrating] = useState(false);
+  const [images, setImages] = useState<Record<string, string[]>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<string | null>(activeId);
@@ -376,7 +379,38 @@ export function WritingStudio({
     }
   }
 
-  const busy = generating || humanizing;
+  async function illustrate() {
+    if (!editor || !activeIdRef.current) return;
+    const id = activeIdRef.current;
+    setIllustrating(true);
+    setMessage(null);
+    setInsufficient(false);
+    try {
+      const base = editor.getText({ blockSeparator: " " }).slice(0, 400);
+      const res = await fetch("/api/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId, chapterId: id, prompt: base }),
+      });
+      if (res.status === 402) {
+        setInsufficient(true);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setMessage(data.error ?? "Não foi possível ilustrar.");
+        return;
+      }
+      setImages((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), data.url] }));
+      if (typeof data.balance === "number") setBalance(data.balance);
+    } catch {
+      setMessage("Falha de conexão ao ilustrar.");
+    } finally {
+      setIllustrating(false);
+    }
+  }
+
+  const busy = generating || humanizing || illustrating;
 
   return (
     <div className="flex h-[calc(100vh-57px)]">
@@ -484,6 +518,20 @@ export function WritingStudio({
               )}
               {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={illustrate}
+              disabled={busy || !activeId}
+              title="Gerar uma ilustração para o capítulo (Kie.ai)"
+            >
+              {illustrating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageIcon className="size-4" />
+              )}
+              Ilustrar
+            </Button>
             <Button asChild variant="ghost" size="sm" disabled={chapters.length === 0}>
               <a href={`/api/export?bookId=${bookId}`} title="Baixar EPUB">
                 <Download className="size-4" />
@@ -529,6 +577,19 @@ export function WritingStudio({
             <EditorContent editor={editor} />
             {busy && (
               <span className="ml-0.5 inline-block h-5 w-[2px] animate-pulse bg-indigo-500 align-middle" />
+            )}
+            {activeId && (images[activeId]?.length ?? 0) > 0 && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                {images[activeId].map((u, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src={u}
+                    alt="Ilustração do capítulo"
+                    className="h-44 rounded-lg border object-cover"
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>

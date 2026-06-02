@@ -13,6 +13,7 @@ import {
   glossaryTerms,
   storyBeats,
   versions,
+  chapterImages,
 } from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
@@ -97,6 +98,32 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Imagens de capítulo (Fase C) ----------------------- */
+
+export async function addChapterImage(
+  chapterId: string,
+  data: { storagePath: string; prompt?: string; model?: string }
+) {
+  const rows = await db
+    .insert(chapterImages)
+    .values({
+      chapterId,
+      storagePath: data.storagePath,
+      prompt: data.prompt,
+      model: data.model,
+    })
+    .returning();
+  return rows[0];
+}
+
+export async function getChapterImages(chapterId: string) {
+  return db
+    .select()
+    .from(chapterImages)
+    .where(eq(chapterImages.chapterId, chapterId))
+    .orderBy(chapterImages.position);
 }
 
 /* ----------------------- Versionamento (Fase B) ----------------------- */
