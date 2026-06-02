@@ -3,6 +3,7 @@ import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-
 import { db } from "@/lib/db";
 import {
   books,
+  bookMeta,
   chapters,
   keywords,
   characters,
@@ -94,6 +95,24 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Book meta / matter (Fase A5) ----------------------- */
+
+export async function getBookMeta(bookId: string) {
+  const rows = await db
+    .select()
+    .from(bookMeta)
+    .where(eq(bookMeta.bookId, bookId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveBookMatter(bookId: string, matter: unknown) {
+  await db
+    .insert(bookMeta)
+    .values({ bookId, matter })
+    .onConflictDoUpdate({ target: bookMeta.bookId, set: { matter } });
 }
 
 /* ----------------------- Bíblia da História (Fase A) ----------------------- */

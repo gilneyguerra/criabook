@@ -24,6 +24,9 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS structure_method text;
 -- chapters: resumo p/ RAG
 ALTER TABLE chapters ADD COLUMN IF NOT EXISTS summary text;
 
+-- book_meta: front/back matter editável
+ALTER TABLE book_meta ADD COLUMN IF NOT EXISTS matter jsonb;
+
 -- Bíblia da História
 CREATE TABLE IF NOT EXISTS characters (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

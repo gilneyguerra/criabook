@@ -168,6 +168,7 @@ export const bookMeta = pgTable("book_meta", {
   backCoverText: text("back_cover_text"),
   authorName: text("author_name"),
   coverDesign: jsonb("cover_design"), // estado do canvas da capa (Fase 9)
+  matter: jsonb("matter"), // front/back matter editável (Fase A5)
 });
 
 export const chapters = pgTable("chapters", {

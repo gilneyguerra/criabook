@@ -32,6 +32,7 @@ npm run dev
 - [x] **Fase 3** — Construtor de prompt: keywords clicáveis + sugestões via Haiku + base compartilhada (dedup exato + **semântico via Voyage AI/pgvector**)
 - [x] **Fase 4** — Geração de capítulo com streaming: SSE + efeito de digitação (TipTap) + auto-scroll + parada por page_target + débito de créditos por tokens
 - [~] **Fase 5** (em andamento) — Editor editável + **Humanizar seleção** (skill blader/humanizer) + **Salvar/autosave** + **recuperação local** (estilo Word); chat localizar/substituir pendente
+- [x] **Qualidade editorial (PRD Fase 1 / "Fase A")** — Wizard editorial (logline/POV/tom/estrutura) + **Bíblia da História** + **motor de consistência (RAG)** Voyage/pgvector + front/back matter automático *(rodar `lib/db/migrations/0001_quality.sql` no Neon)*
 - [ ] Fase 6 — Versionamento + rollback
 - [ ] Fase 7 — Roadmap (React Flow)
 - [ ] Fase 8 — Imagens

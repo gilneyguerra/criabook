@@ -126,7 +126,8 @@ CREATE TABLE IF NOT EXISTS book_meta (
   dedication text,
   back_cover_text text,
   author_name text,
-  cover_design jsonb
+  cover_design jsonb,
+  matter jsonb
 );
 
 CREATE TABLE IF NOT EXISTS chapters (
