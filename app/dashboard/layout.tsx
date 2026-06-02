@@ -5,7 +5,7 @@ import { BookOpen } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
-import { SeaOfWords } from "@/components/ui/sea-of-words";
+import { DottedSurface } from "@/components/ui/dotted-surface";
 
 export default async function DashboardLayout({
   children,
@@ -20,6 +20,8 @@ export default async function DashboardLayout({
 
   return (
     <div className="relative flex min-h-screen flex-col">
+      {/* Fundo: superfície de pontos ondulando como um mar. */}
+      <DottedSurface className="z-0" />
       <header className="relative z-10 flex items-center justify-between border-b bg-background/80 px-6 py-4 backdrop-blur">
         <Link
           href="/dashboard"
@@ -35,13 +37,9 @@ export default async function DashboardLayout({
           <LogoutButton />
         </div>
       </header>
-      <div className="relative flex-1">
-        {/* "Mar de palavras": fundo sutil atrás do conteúdo. */}
-        <SeaOfWords />
-        <main className="relative z-10 mx-auto w-full max-w-5xl px-6 py-8">
-          {children}
-        </main>
-      </div>
+      <main className="relative z-10 mx-auto w-full max-w-5xl flex-1 px-6 py-8">
+        {children}
+      </main>
     </div>
   );
 }

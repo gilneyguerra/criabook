@@ -26,10 +26,19 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
+      <section className="rounded-2xl border bg-background/70 p-8 text-center backdrop-blur">
+        <h1 className="font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
+          Pronto para navegar em palavras?
+        </h1>
+        <p className="mx-auto mt-2 max-w-md text-muted-foreground">
+          Comece um novo livro e veja a história nascer, capítulo a capítulo.
+        </p>
+      </section>
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Meus livros</h1>
+          <h2 className="text-xl font-bold tracking-tight">Meus livros</h2>
           <p className="text-sm text-muted-foreground">
             Crie um novo livro ou continue um rascunho.
           </p>
