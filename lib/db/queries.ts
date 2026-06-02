@@ -1,7 +1,16 @@
 import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { books, chapters, keywords } from "@/lib/db/schema";
+import {
+  books,
+  chapters,
+  keywords,
+  characters,
+  locations,
+  worldRules,
+  timelineEvents,
+  glossaryTerms,
+} from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
 
@@ -68,6 +77,95 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Bíblia da História (Fase A) ----------------------- */
+
+export type BibleType =
+  | "character"
+  | "location"
+  | "world_rule"
+  | "timeline"
+  | "glossary";
+
+export async function getBible(bookId: string) {
+  const [chars, locs, rules, tl, gloss] = await Promise.all([
+    db.select().from(characters).where(eq(characters.bookId, bookId)),
+    db.select().from(locations).where(eq(locations.bookId, bookId)),
+    db.select().from(worldRules).where(eq(worldRules.bookId, bookId)),
+    db
+      .select()
+      .from(timelineEvents)
+      .where(eq(timelineEvents.bookId, bookId))
+      .orderBy(timelineEvents.order),
+    db.select().from(glossaryTerms).where(eq(glossaryTerms.bookId, bookId)),
+  ]);
+  return { characters: chars, locations: locs, worldRules: rules, timeline: tl, glossary: gloss };
+}
+
+export async function insertBibleEntry(
+  bookId: string,
+  type: BibleType,
+  data: Record<string, string>
+) {
+  if (type === "character") {
+    const r = await db
+      .insert(characters)
+      .values({
+        bookId,
+        name: data.name,
+        role: data.role || null,
+        appearance: data.appearance || null,
+        traits: data.traits || null,
+        arc: data.arc || null,
+      })
+      .returning();
+    return r[0];
+  }
+  if (type === "location") {
+    const r = await db
+      .insert(locations)
+      .values({ bookId, name: data.name, description: data.description || null })
+      .returning();
+    return r[0];
+  }
+  if (type === "world_rule") {
+    const r = await db
+      .insert(worldRules)
+      .values({ bookId, category: data.category || null, rule: data.rule })
+      .returning();
+    return r[0];
+  }
+  if (type === "timeline") {
+    const r = await db
+      .insert(timelineEvents)
+      .values({ bookId, description: data.description, order: Number(data.order) || 0 })
+      .returning();
+    return r[0];
+  }
+  const r = await db
+    .insert(glossaryTerms)
+    .values({ bookId, term: data.term, definition: data.definition })
+    .returning();
+  return r[0];
+}
+
+export async function deleteBibleEntry(
+  bookId: string,
+  type: BibleType,
+  id: string
+) {
+  const table =
+    type === "character"
+      ? characters
+      : type === "location"
+        ? locations
+        : type === "world_rule"
+          ? worldRules
+          : type === "timeline"
+            ? timelineEvents
+            : glossaryTerms;
+  await db.delete(table).where(and(eq(table.id, id), eq(table.bookId, bookId)));
 }
 
 /* ----------------------- Capítulos (Fase 4) ----------------------- */
