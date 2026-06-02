@@ -43,6 +43,23 @@ export function briefToText(
   return parts.join("\n") || "Sem base definida.";
 }
 
+/** Preset de estilo por gênero/tipo (Fase B) — vira diretriz no system prompt. */
+export function genreEmphasis(
+  genre?: string | null,
+  type?: string | null
+): string {
+  if (type === "nonfiction")
+    return "Clareza acima de tudo, estrutura lógica, exemplos concretos e passos acionáveis.";
+  const g = (genre ?? "").toLowerCase();
+  if (/(thriller|suspense|polic|terror)/.test(g))
+    return "Ritmo seco, frases curtas, tensão crescente e gancho no fim de cada cena.";
+  if (/(fantasia|fic[çc][ãa]o cient|sci|distop)/.test(g))
+    return "Densidade descritiva, worldbuilding coerente; respeite as regras do mundo da Bíblia.";
+  if (/(romance|drama)/.test(g))
+    return "Emoção, tensão relacional e diálogos vivos; mostre os sentimentos, não os explique.";
+  return "Prosa imersiva e equilibrada, com ritmo variado.";
+}
+
 /** Contexto editorial completo do livro (camada de ofício) para o system prompt. */
 export function bookContextText(book: {
   title?: string | null;
@@ -68,6 +85,7 @@ export function bookContextText(book: {
   if (book.structureMethod) parts.push(`Estrutura: ${book.structureMethod}`);
   const kw = briefToText(book.brief ?? null);
   if (kw && kw !== "Sem base definida.") parts.push(kw);
+  parts.push(`Diretriz de estilo: ${genreEmphasis(book.genre, book.type)}`);
   return parts.join("\n") || "Sem base definida.";
 }
 

@@ -202,6 +202,69 @@ export async function generateBeats(
   }));
 }
 
+const CONSISTENCY_TOOL: Anthropic.Tool = {
+  name: "reportar_inconsistencias",
+  description: "Lista as inconsistências de continuidade encontradas.",
+  input_schema: {
+    type: "object",
+    properties: {
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            severity: { type: "string", description: "alta | média | baixa" },
+            description: { type: "string" },
+            location: { type: "string", description: "capítulo/onde ocorre" },
+          },
+          required: ["severity", "description"],
+        },
+      },
+    },
+    required: ["issues"],
+  },
+};
+
+export type ConsistencyIssue = {
+  severity: string;
+  description: string;
+  location?: string;
+};
+
+/** Passe de QA: encontra contradições no manuscrito (usa resumos + Bíblia). */
+export async function checkConsistency(
+  context: string
+): Promise<ConsistencyIssue[]> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return [];
+
+  const res = await anthropic.messages.create({
+    model: MODEL_MAIN,
+    max_tokens: 2000,
+    system:
+      "Você é um editor de continuidade. Analise o manuscrito (resumos dos " +
+      "capítulos + Bíblia) e encontre contradições: grafia de nome que muda, " +
+      "traço físico alterado, furo na linha do tempo, personagem morto que " +
+      "reaparece, regra do mundo violada, fatos incoerentes. Seja específico e " +
+      "cite onde. Se não houver problemas, retorne uma lista vazia. Em pt-BR.",
+    messages: [{ role: "user", content: context }],
+    tools: [CONSISTENCY_TOOL],
+    tool_choice: { type: "tool", name: CONSISTENCY_TOOL.name },
+  });
+
+  const block = res.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") return [];
+  const input = block.input as {
+    issues?: { severity?: string; description?: string; location?: string }[];
+  };
+  if (!Array.isArray(input.issues)) return [];
+  return input.issues.map((i) => ({
+    severity: String(i.severity ?? "média"),
+    description: String(i.description ?? ""),
+    location: i.location ? String(i.location) : undefined,
+  }));
+}
+
 /** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
 export function friendlyAiError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
