@@ -21,6 +21,15 @@ const DEFAULT_WORDS = [
   "prólogo", "desfecho", "musa", "tinta", "ritmo", "metáfora", "épico",
 ];
 
+type Item = {
+  word: string;
+  x: number;
+  baseY: number;
+  size: number;
+  phase: number;
+  alpha: number;
+};
+
 export function SeaOfWords({
   words = DEFAULT_WORDS,
   className,
@@ -33,8 +42,12 @@ export function SeaOfWords({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    // Consts com tipo já não-nulo (a narrowing de fluxo não cruza closures).
+    const el: HTMLCanvasElement = canvas;
+    const ctx: CanvasRenderingContext2D = context;
 
     const prefersReduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
@@ -43,35 +56,24 @@ export function SeaOfWords({
     let raf = 0;
     let width = 0;
     let height = 0;
-    let dpr = 1;
-
-    type Item = {
-      word: string;
-      x: number;
-      baseY: number;
-      size: number;
-      phase: number;
-      alpha: number;
-    };
     let items: Item[] = [];
 
-    // PRNG determinístico (sem Math.random no SSR; aqui é client, mas mantém estável).
+    // PRNG determinístico (estável entre frames).
     let seed = 1337;
     const rand = () => {
       seed = (seed * 1664525 + 1013904223) % 4294967296;
       return seed / 4294967296;
     };
 
-    function build() {
-      const rect = canvas.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const build = () => {
+      const rect = el.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       width = rect.width;
       height = rect.height;
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
+      el.width = Math.floor(width * dpr);
+      el.height = Math.floor(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Espaçamento da grade (palavras mais esparsas em telas menores).
       const colGap = width < 640 ? 130 : 160;
       const rowGap = width < 640 ? 46 : 54;
       const cols = Math.ceil(width / colGap) + 1;
@@ -93,14 +95,13 @@ export function SeaOfWords({
           });
         }
       }
-    }
+    };
 
-    function draw(t: number) {
+    const draw = (t: number) => {
       ctx.clearRect(0, 0, width, height);
       ctx.textBaseline = "middle";
       const time = t / 1000;
       for (const it of items) {
-        // Onda: deslocamento vertical em função de x e tempo (efeito "maré").
         const wave = prefersReduced
           ? 0
           : Math.sin(time * 0.6 + it.x * 0.012 + it.phase) * 8;
@@ -110,17 +111,14 @@ export function SeaOfWords({
         ctx.fillText(it.word, it.x + drift, it.baseY + wave);
       }
       if (!prefersReduced) raf = requestAnimationFrame(draw);
-    }
+    };
 
-    function start() {
+    const start = () => {
       build();
       cancelAnimationFrame(raf);
-      if (prefersReduced) {
-        draw(0); // render estático único
-      } else {
-        raf = requestAnimationFrame(draw);
-      }
-    }
+      if (prefersReduced) draw(0);
+      else raf = requestAnimationFrame(draw);
+    };
 
     start();
 

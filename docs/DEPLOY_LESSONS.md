@@ -36,3 +36,9 @@
 **Causa:** `next@15.1.3` tem CVEs conhecidos — destaque para CVE-2025-29927 (bypass de autorização no middleware, corrigido no 15.2.3). Como o app usa middleware para proteger rotas, é crítico.
 **Correção:** `next` e `eslint-config-next` → `^15.5.0` (bem além dos patches).
 **Lição:** fixar Next em versão patcheada desde o início; a Vercel barra versões vulneráveis. Conferir advisories antes de pinar uma versão exata.
+
+## 2026-06-01 — TS strict: 'X is possibly null' dentro de closures
+**Erro:** build falhou no type-check: em `sea-of-words.tsx`, `canvas.getBoundingClientRect()` → `'canvas' is possibly 'null'`, mesmo com `if (!canvas) return` antes.
+**Causa:** a narrowing de fluxo do TypeScript **não atravessa funções aninhadas/closures**. `const canvas = ref.current` tem tipo declarado `T | null`; dentro de `build()`/`draw()`/callbacks do ResizeObserver a narrowing se perde.
+**Correção:** após o guard, capturar em const de tipo já não-nulo: `const el: HTMLCanvasElement = canvas;` e usar `el` nos closures (mesmo padrão no `radial-orbital-timeline.tsx`).
+**Lição:** ao usar `ref.current` dentro de closures (rAF, observers, listeners), reatribuir a uma const tipada não-nula depois do guard.

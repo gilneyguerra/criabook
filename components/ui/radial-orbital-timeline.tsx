@@ -49,14 +49,15 @@ export function RadialOrbitalTimeline({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const node: HTMLDivElement = el; // tipo não-nulo p/ usar no closure
     const apply = () => {
-      const min = Math.min(el.clientWidth, el.clientHeight);
+      const min = Math.min(node.clientWidth, node.clientHeight);
       setRadius(Math.max(120, Math.min(240, min / 2 - 70)));
-      setSize({ w: el.clientWidth, h: el.clientHeight });
+      setSize({ w: node.clientWidth, h: node.clientHeight });
     };
     apply();
     const ro = new ResizeObserver(apply);
-    ro.observe(el);
+    ro.observe(node);
     return () => ro.disconnect();
   }, []);
 
