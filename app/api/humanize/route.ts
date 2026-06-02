@@ -64,8 +64,12 @@ export async function POST(request: Request) {
         await debitCredits(userId, credits, "humanizar trecho");
         send({ type: "done", debited: credits, balance: balance - credits });
         controller.close();
-      } catch {
-        send({ type: "error", message: "Falha ao humanizar." });
+      } catch (err) {
+        send({
+          type: "error",
+          message:
+            err instanceof Error ? `Falha ao humanizar: ${err.message}` : "Falha ao humanizar.",
+        });
         controller.close();
       }
     },

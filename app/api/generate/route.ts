@@ -88,12 +88,17 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
 
-        await debitCredits(userId, credits, "geração de capítulo", chapter.id);
+        // Salva o capítulo primeiro (não perde o texto se o débito falhar).
         await completeChapter(chapter.id, {
           contentJson: textToDoc(fullText),
           contentText: fullText,
           tokensUsed: usage.output_tokens,
         });
+        try {
+          await debitCredits(userId, credits, "geração de capítulo", chapter.id);
+        } catch {
+          // débito best-effort; o capítulo já está salvo
+        }
 
         const totalWords = priorWords + wordCount(fullText);
         const targetReached = target > 0 && totalWords >= target;
@@ -114,8 +119,14 @@ export async function POST(request: Request) {
           balance: balance - credits,
         });
         controller.close();
-      } catch {
-        send({ type: "error", message: "Falha na geração do capítulo." });
+      } catch (err) {
+        send({
+          type: "error",
+          message:
+            err instanceof Error
+              ? `Falha na geração: ${err.message}`
+              : "Falha na geração do capítulo.",
+        });
         controller.close();
       }
     },
