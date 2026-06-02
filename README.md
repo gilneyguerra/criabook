@@ -29,7 +29,7 @@ npm run dev
 - [x] **Fase 0** — Fundação: Next.js + Tailwind + shadcn + Neon/Drizzle + Better Auth + dashboard
 - [x] **Fase 1** — Modelo de dados: schema Drizzle completo + pgvector + autorização por `userId` *(falta rodar a migration no Neon)*
 - [x] **Fase 2** — Créditos + Stripe: checkout, webhook idempotente, saldo e débito *(falta configurar a conta/keys Stripe)*
-- [ ] Fase 3 — Construtor de prompt
+- [x] **Fase 3** — Construtor de prompt: keywords clicáveis + sugestões via Haiku + base compartilhada (dedup exato) *(dedup semântico pgvector pendente de provedor de embeddings)*
 - [ ] Fase 4 — Geração de capítulo com streaming
 - [ ] Fase 5 — Editor + chat de edição
 - [ ] Fase 6 — Versionamento + rollback

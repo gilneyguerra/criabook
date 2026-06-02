@@ -4,6 +4,7 @@ import { BookPlus, Map } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { getUserBooks } from "@/lib/db/queries";
+import { createBook } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -50,11 +51,12 @@ export default async function DashboardPage() {
               Mapa da história (demo)
             </Link>
           </Button>
-          {/* A criação de livro é habilitada na Fase 3 (construtor de prompt). */}
-          <Button disabled>
-            <BookPlus className="size-4" />
-            Novo livro
-          </Button>
+          <form action={createBook}>
+            <Button type="submit">
+              <BookPlus className="size-4" />
+              Novo livro
+            </Button>
+          </form>
         </div>
       </div>
 
