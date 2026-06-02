@@ -5,6 +5,10 @@ import Link from "next/link";
 import { Sparkles, Plus, X, Check, Loader2 } from "lucide-react";
 
 import { KEYWORD_CATEGORIES } from "@/lib/keywords";
+import {
+  LAYOUT_PROFILE_OPTIONS,
+  defaultProfileIdForType,
+} from "@/lib/layout/profile";
 import { saveBrief } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +22,7 @@ type Editorial = {
   pov: string;
   tone: string;
   structureMethod: string;
+  layoutProfileId: string;
 };
 
 const POV_OPTIONS = [
@@ -118,6 +123,8 @@ export function PromptBuilder({
       pov: editorial.pov,
       tone: editorial.tone,
       structureMethod: editorial.structureMethod,
+      layoutProfileId:
+        editorial.layoutProfileId || defaultProfileIdForType(editorial.type),
     });
     setSaving(false);
     if (result?.error) setError(result.error);
@@ -240,6 +247,27 @@ export function PromptBuilder({
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="layout">Perfil de diagramação (formato do livro)</Label>
+          <select
+            id="layout"
+            value={editorial.layoutProfileId || defaultProfileIdForType(editorial.type)}
+            onChange={(e) => setEd("layoutProfileId", e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {LAYOUT_PROFILE_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Define recuo/espaçamento, tipografia e formato (usado no EPUB e, depois,
+            no PDF de impressão). Romance usa recuo na 1ª linha; não-ficção usa
+            espaço entre parágrafos.
+          </p>
         </div>
       </section>
 

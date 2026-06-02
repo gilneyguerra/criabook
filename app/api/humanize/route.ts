@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { createHumanizeStream, friendlyAiError } from "@/lib/ai/claude";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import { normalize } from "@/lib/text/normalizer";
+import { getLayoutProfile } from "@/lib/layout/profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,13 +50,20 @@ export async function POST(request: Request) {
 
   const userId = session.user.id;
   const encoder = new TextEncoder();
+  // Perfil default só para as regras de TEXTO (locale pt-BR) — idênticas em
+  // todos os presets, então não precisamos do bookId aqui.
+  const profile = getLayoutProfile(undefined, "fiction");
 
   const body = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      let full = "";
       try {
-        stream.on("text", (delta: string) => send({ type: "delta", text: delta }));
+        stream.on("text", (delta: string) => {
+          full += delta;
+          send({ type: "delta", text: delta });
+        });
         const finalMsg = await stream.finalMessage();
         const usage = finalMsg.usage;
         const credits = creditsForUsage({
@@ -62,7 +71,13 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
         await debitCredits(userId, credits, "humanizar trecho");
-        send({ type: "done", debited: credits, balance: balance - credits });
+        // Saída normalizada: o cliente substitui a seleção por este texto.
+        send({
+          type: "done",
+          text: normalize(full, profile),
+          debited: credits,
+          balance: balance - credits,
+        });
         controller.close();
       } catch (err) {
         console.error("humanize error", err);

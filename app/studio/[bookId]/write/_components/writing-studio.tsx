@@ -16,11 +16,12 @@ import {
   History,
   Download,
   ImageIcon,
+  Eraser,
 } from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
-import { saveChapter, snapshotChapter } from "../actions";
+import { saveChapter, snapshotChapter, normalizeChapter } from "../actions";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -57,6 +58,7 @@ export function WritingStudio({
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [recovery, setRecovery] = useState<Draft | null>(null);
   const [illustrating, setIllustrating] = useState(false);
+  const [normalizingDoc, setNormalizingDoc] = useState(false);
   const [images, setImages] = useState<Record<string, string[]>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -250,11 +252,17 @@ export function WritingStudio({
           scrollToBottom();
         },
         (evt) => {
+          // O servidor salva o texto NORMALIZADO; sincroniza o editor/estado.
+          const finalText =
+            typeof evt.contentText === "string" ? evt.contentText : fullText;
+          if (typeof evt.contentText === "string") {
+            editor.commands.setContent(textToDoc(finalText), false);
+          }
           const newChapter: Chapter = {
             id: String(evt.chapterId),
             index: Number(evt.index ?? chapters.length + 1),
             title: String(evt.title ?? `Capítulo ${chapters.length + 1}`),
-            contentText: fullText,
+            contentText: finalText,
           };
           setChapters((prev) => [...prev, newChapter]);
           setActiveId(newChapter.id);
@@ -350,6 +358,7 @@ export function WritingStudio({
       }
 
       let first = true;
+      let insertedFrom = from;
       // Reabilita edição programática durante o stream.
       editor.setEditable(true);
       await readSSE(
@@ -357,12 +366,23 @@ export function WritingStudio({
         (text) => {
           if (first) {
             editor.chain().focus().deleteRange({ from, to }).run();
+            insertedFrom = editor.state.selection.from;
             first = false;
           }
           editor.commands.insertContent(text);
           scrollToBottom();
         },
         (evt) => {
+          // Substitui o trecho cru pelo texto normalizado (tipografia PT-BR).
+          if (typeof evt.text === "string" && evt.text.trim()) {
+            const insertedTo = editor.state.selection.from;
+            editor
+              .chain()
+              .focus()
+              .deleteRange({ from: insertedFrom, to: insertedTo })
+              .insertContent(evt.text)
+              .run();
+          }
           if (typeof evt.balance === "number") setBalance(evt.balance);
         }
       );
@@ -410,7 +430,37 @@ export function WritingStudio({
     }
   }
 
-  const busy = generating || humanizing || illustrating;
+  async function normalizeDoc() {
+    if (!editor || !activeIdRef.current) return;
+    const id = activeIdRef.current;
+    const text = editor.getText({ blockSeparator: "\n\n" });
+    if (!text.trim()) return;
+    setNormalizingDoc(true);
+    setMessage(null);
+    try {
+      const res = await normalizeChapter(bookId, id, text);
+      if (res && "ok" in res && res.ok && typeof res.contentText === "string") {
+        editor.commands.setContent(textToDoc(res.contentText), false);
+        setChapters((prev) =>
+          prev.map((c) =>
+            c.id === id ? { ...c, contentText: res.contentText as string } : c
+          )
+        );
+        setDirty(false);
+        setLastSaved(Date.now());
+        clearDraft(id);
+        setMessage("Tipografia normalizada (aspas curvas, travessão, reticências).");
+      } else if (res && "error" in res && res.error) {
+        setMessage(res.error);
+      }
+    } catch {
+      setMessage("Falha ao normalizar o capítulo.");
+    } finally {
+      setNormalizingDoc(false);
+    }
+  }
+
+  const busy = generating || humanizing || illustrating || normalizingDoc;
 
   return (
     <div className="flex h-[calc(100vh-57px)]">
@@ -480,6 +530,20 @@ export function WritingStudio({
                 <Wand2 className="size-4" />
               )}
               Humanizar seleção
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={normalizeDoc}
+              disabled={busy || !activeId}
+              title="Aplica a tipografia PT-BR: aspas curvas, travessão de diálogo, reticências"
+            >
+              {normalizingDoc ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Eraser className="size-4" />
+              )}
+              Normalizar
             </Button>
             <Button
               variant="outline"

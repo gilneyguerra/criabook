@@ -19,6 +19,8 @@ import { bookContextText } from "@/lib/ai/prompts";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import { textToDoc, wordCount } from "@/lib/tiptap";
 import { retrieveContext, summarizeChapter, indexChapter } from "@/lib/ai/rag";
+import { normalize } from "@/lib/text/normalizer";
+import { getLayoutProfile } from "@/lib/layout/profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
   }
 
   const userId = session.user.id;
+  const profile = getLayoutProfile(book.layoutProfileId, book.type);
   const briefText = bookContextText({
     title: book.title,
     type: book.type,
@@ -164,27 +167,31 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
 
-        const summary = await summarizeChapter(fullText);
+        // Camada A: normaliza tipograficamente antes de persistir (o stream ao
+        // cliente foi cru, para o efeito de digitação; o salvo é o limpo).
+        const normalized = normalize(fullText, profile);
+
+        const summary = await summarizeChapter(normalized);
         await completeChapter(chapter.id, {
-          contentJson: textToDoc(fullText),
-          contentText: fullText,
+          contentJson: textToDoc(normalized),
+          contentText: normalized,
           tokensUsed: usage.output_tokens,
           summary,
         });
         try {
-          await indexChapter(bookId, chapter.id, fullText);
+          await indexChapter(bookId, chapter.id, normalized);
         } catch {}
         try {
           await createVersion(bookId, chapter.id, `Gerado: ${chapter.title}`, {
-            contentText: fullText,
-            contentJson: textToDoc(fullText),
+            contentText: normalized,
+            contentJson: textToDoc(normalized),
           });
         } catch {}
         try {
           await debitCredits(userId, credits, "geração de capítulo", chapter.id);
         } catch {}
 
-        const totalWords = priorWords + wordCount(fullText);
+        const totalWords = priorWords + wordCount(normalized);
         const targetReached = target > 0 && totalWords >= target;
         if (targetReached) await setBookStatus(bookId, userId, "review");
 
@@ -193,7 +200,8 @@ export async function POST(request: Request) {
           chapterId: chapter.id,
           index,
           title: chapter.title,
-          words: wordCount(fullText),
+          words: wordCount(normalized),
+          contentText: normalized,
           totalWords,
           target,
           targetReached,

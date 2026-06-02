@@ -71,6 +71,7 @@ export async function updateBookBrief(
     pov?: string;
     tone?: string;
     structureMethod?: string;
+    layoutProfileId?: string;
   }
 ) {
   // Drizzle ignora chaves `undefined` no SET (não sobrescreve).
@@ -85,6 +86,7 @@ export async function updateBookBrief(
       pov: data.pov,
       tone: data.tone,
       structureMethod: data.structureMethod,
+      layoutProfileId: data.layoutProfileId,
       brief: data.brief,
       updatedAt: new Date(),
     })

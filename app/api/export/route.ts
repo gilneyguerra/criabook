@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { getBookForUser, getChapters, getBookMeta } from "@/lib/db/queries";
 import { buildEpub } from "@/lib/export/epub";
 import type { Matter } from "@/lib/matter";
+import { getLayoutProfile } from "@/lib/layout/profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,8 +32,15 @@ export async function GET(request: Request) {
   }
   const meta = await getBookMeta(bookId).catch(() => null);
   const matter = (meta?.matter ?? {}) as Matter;
+  const profile = getLayoutProfile(book.layoutProfileId, book.type);
 
-  const buffer = await buildEpub(book, chapters, matter, new Date().getFullYear());
+  const buffer = await buildEpub(
+    book,
+    chapters,
+    matter,
+    new Date().getFullYear(),
+    profile
+  );
   const filename =
     (book.title ?? "livro").replace(/[^\w\-]+/g, "_").slice(0, 60) + ".epub";
 

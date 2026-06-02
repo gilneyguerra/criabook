@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS books (
   pov text,
   tone text,
   structure_method text,
+  layout_profile_id text,
   language text NOT NULL DEFAULT 'pt-BR',
   is_adult boolean NOT NULL DEFAULT false,
   status book_status NOT NULL DEFAULT 'draft',

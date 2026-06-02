@@ -93,6 +93,9 @@ export function buildChapterSystem(briefText: string): string {
   return (
     "Você é um escritor profissional de ficção em português do Brasil. " +
     "Escreva prosa imersiva, com ritmo, diálogos naturais e descrições vívidas. " +
+    "Use a tipografia padrão do português: diálogos com travessão (—) no início " +
+    "da fala, aspas curvas (“ ”) só para citações/pensamentos, reticências (…). " +
+    "Não embuta formatação visual (sem recuos manuais, sem espaços duplos). " +
     "Mantenha total coerência com a base do livro abaixo:\n\n" +
     briefText +
     "\n\nResponda APENAS com o texto do capítulo — sem título, sem cabeçalhos, " +
@@ -128,7 +131,7 @@ Remova os "AI tells":
 - Inflação de conteúdo: ênfase indevida ("momento crucial", "tendências amplas"), linguagem promocional ("vibrante", "deslumbrante", "inovador"), atribuições vagas ("especialistas afirmam"), análises rasas em "-ndo" que fingem profundidade.
 - Vocabulário de IA: "na verdade", "mergulhar", "panorama/cenário", "testemunho", "sublinhar", "tapeçaria", e similares.
 - Evitar o verbo ser ("serve como" no lugar de "é"); paralelismos negativos ("não é só... é..."); agrupamentos forçados em três; ciclos de sinônimos (variação elegante).
-- Estilo: NUNCA use travessões (— ou –) — substitua por vírgula, ponto, parênteses ou reescreva. Sem negrito/emojis em excesso, sem Título Com Maiúsculas Em Tudo, sem aspas tipográficas curvas.
+- Estilo (PT-BR): NÃO use travessão como muleta de pausa/aparte na NARRAÇÃO — prefira vírgula, ponto ou parênteses. MAS o travessão (—) é OBRIGATÓRIO no DIÁLOGO em português: preserve-o no início das falas e antes do verbo de elocução. Aspas curvas (“ ” ‘ ’) são a tipografia correta em PT-BR — mantenha-as. Sem negrito/emojis em excesso, sem Título Com Maiúsculas Em Tudo.
 - Enchimento e hedge: "a fim de", "devido ao fato de que", "neste momento", excesso de qualificadores ("poderia possivelmente"), conclusões genéricas, sinalizações ("vamos mergulhar", "veja o que você precisa saber").
 - Artefatos de chatbot: "espero que ajude", "me avise", ressalvas de cutoff, tom bajulador.
 
@@ -138,7 +141,7 @@ Adicione voz humana:
 - Permita imperfeição: tangentes, apartes e incerteza genuína são humanos.
 - Use detalhes específicos e concretos.
 
-Responda APENAS com o texto reescrito — sem aspas ao redor, sem títulos, sem comentários, sem metadados. Sem nenhum travessão.`;
+Responda APENAS com o texto reescrito, sem títulos, sem comentários, sem metadados. Preserve a pontuação de diálogo em PT-BR (travessão) e as aspas curvas.`;
 
 export function buildHumanizePrompt(text: string): string {
   return `Reescreva o trecho a seguir para soar humano, seguindo as diretrizes. Mantenha o idioma e o tamanho aproximado.\n\nTrecho:\n${text}`;

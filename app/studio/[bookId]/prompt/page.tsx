@@ -31,6 +31,7 @@ export default async function PromptPage({
         pov: book.pov ?? "",
         tone: book.tone ?? "",
         structureMethod: book.structureMethod ?? "",
+        layoutProfileId: book.layoutProfileId ?? "",
       }}
     />
   );

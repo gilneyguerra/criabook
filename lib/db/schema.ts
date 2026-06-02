@@ -148,6 +148,7 @@ export const books = pgTable("books", {
   pov: text("pov"), // ex.: "first_past", "third_present"
   tone: text("tone"),
   structureMethod: text("structure_method"), // three_act | hero_journey | save_the_cat | story_circle | nonfiction
+  layoutProfileId: text("layout_profile_id"), // Perfil de Layout (diagramação) — lib/layout/profile.ts
   language: text("language").notNull().default("pt-BR"),
   isAdult: boolean("is_adult").notNull().default(false),
   status: bookStatus("status").notNull().default("draft"),

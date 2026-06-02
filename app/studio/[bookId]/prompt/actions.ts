@@ -16,6 +16,7 @@ export type BriefPayload = {
   pov?: string;
   tone?: string;
   structureMethod?: string;
+  layoutProfileId?: string;
 };
 
 export async function saveBrief(bookId: string, payload: BriefPayload) {
@@ -41,6 +42,7 @@ export async function saveBrief(bookId: string, payload: BriefPayload) {
     pov: payload.pov || undefined,
     tone: payload.tone?.trim() || undefined,
     structureMethod: payload.structureMethod || undefined,
+    layoutProfileId: payload.layoutProfileId || undefined,
   });
 
   if (!saved) return { error: "Livro não encontrado." };
