@@ -11,7 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { ContainerScroll } from "@/components/ui/container-scroll-animation";
-import { SiteHero } from "./_components/site-hero";
+import { NeuralSynapseHero } from "@/components/ui/neurons-hero";
 import { Manifesto } from "./_components/manifesto";
 import { EditorPreview } from "./_components/editor-preview";
 
@@ -75,7 +75,7 @@ export default function LandingPage() {
         </nav>
       </header>
 
-      <SiteHero />
+      <NeuralSynapseHero />
 
       {/* Preview do app revelado ao rolar */}
       <section className="-mt-20">
