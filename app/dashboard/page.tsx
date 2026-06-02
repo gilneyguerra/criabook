@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { BookPlus } from "lucide-react";
+import { BookPlus, Map } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { getUserBooks } from "@/lib/db/queries";
@@ -34,11 +34,19 @@ export default async function DashboardPage() {
             Crie um novo livro ou continue um rascunho.
           </p>
         </div>
-        {/* A criação de livro é habilitada na Fase 3 (construtor de prompt). */}
-        <Button disabled>
-          <BookPlus className="size-4" />
-          Novo livro
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/studio/demo/roadmap">
+              <Map className="size-4" />
+              Mapa da história (demo)
+            </Link>
+          </Button>
+          {/* A criação de livro é habilitada na Fase 3 (construtor de prompt). */}
+          <Button disabled>
+            <BookPlus className="size-4" />
+            Novo livro
+          </Button>
+        </div>
       </div>
 
       {books.length === 0 ? (
