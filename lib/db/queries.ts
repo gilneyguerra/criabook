@@ -1,9 +1,11 @@
 import { and, cosineDistance, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { books, keywords } from "@/lib/db/schema";
+import { books, chapters, keywords } from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
+
+type BookStatus = "draft" | "generating" | "review" | "done";
 
 // Distância de cosseno máxima para considerar duas keywords "iguais"
 // (0 = idênticas, 1 = ortogonais). ~0.12 ≈ similaridade > 0.88. Ajustável.
@@ -66,6 +68,55 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Capítulos (Fase 4) ----------------------- */
+
+export async function getChapters(bookId: string) {
+  return db
+    .select()
+    .from(chapters)
+    .where(eq(chapters.bookId, bookId))
+    .orderBy(chapters.index);
+}
+
+export async function createChapter(
+  bookId: string,
+  index: number,
+  title: string
+) {
+  const rows = await db
+    .insert(chapters)
+    .values({ bookId, index, title, status: "generating" })
+    .returning();
+  return rows[0];
+}
+
+export async function completeChapter(
+  id: string,
+  data: { contentJson: unknown; contentText: string; tokensUsed: number }
+) {
+  await db
+    .update(chapters)
+    .set({
+      contentJson: data.contentJson,
+      contentText: data.contentText,
+      tokensUsed: data.tokensUsed,
+      status: "review",
+      updatedAt: new Date(),
+    })
+    .where(eq(chapters.id, id));
+}
+
+export async function setBookStatus(
+  bookId: string,
+  userId: string,
+  status: BookStatus
+) {
+  await db
+    .update(books)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(books.id, bookId), eq(books.ownerId, userId)));
 }
 
 /**

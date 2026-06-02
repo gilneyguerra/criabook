@@ -72,7 +72,7 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {books.map((book) => (
-            <Link key={book.id} href={`/studio/${book.id}`}>
+            <Link key={book.id} href={`/studio/${book.id}/write`}>
               <Card className="card-lift h-full hover:border-indigo-500/40">
                 <CardHeader>
                   <CardTitle>{book.title ?? "Sem título"}</CardTitle>

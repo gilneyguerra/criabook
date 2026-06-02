@@ -25,7 +25,42 @@ export function buildKeywordPrompt(
     .join("\n");
 }
 
-// --- Fase 4 (placeholders) ---
-// export function buildStructurePrompt(brief) { ... }   // gera os story_beats
-// export function buildChapterPrompt(brief, roadmap, prevSummaries) { ... }
-// export function buildSummaryPrompt(chapterText) { ... } // comprime p/ contexto
+// --- Fase 4: geração de capítulo ---
+
+import { KEYWORD_CATEGORIES } from "@/lib/keywords";
+
+/** Converte o book_brief (seleções por categoria) em texto para o prompt. */
+export function briefToText(
+  brief: Record<string, string[]> | null | undefined,
+  title?: string | null
+): string {
+  const parts: string[] = [];
+  if (title) parts.push(`Título: ${title}`);
+  for (const c of KEYWORD_CATEGORIES) {
+    const values = brief?.[c.key] ?? [];
+    if (values.length) parts.push(`${c.label}: ${values.join(", ")}`);
+  }
+  return parts.join("\n") || "Sem base definida.";
+}
+
+export function buildChapterSystem(briefText: string): string {
+  return (
+    "Você é um escritor profissional de ficção em português do Brasil. " +
+    "Escreva prosa imersiva, com ritmo, diálogos naturais e descrições vívidas. " +
+    "Mantenha total coerência com a base do livro abaixo:\n\n" +
+    briefText +
+    "\n\nResponda APENAS com o texto do capítulo — sem título, sem cabeçalhos, " +
+    "sem listas, sem comentários ou metadados."
+  );
+}
+
+export function buildChapterPrompt(index: number, prevContext?: string): string {
+  return [
+    `Escreva o Capítulo ${index} do livro.`,
+    prevContext
+      ? `Resumo do que aconteceu até aqui (para manter a continuidade):\n${prevContext}`
+      : "Este é o primeiro capítulo — estabeleça o tom, a ambientação e o protagonista.",
+    "Extensão: cerca de 700 a 1000 palavras, em parágrafos separados por linha em branco. " +
+      "Termine em um gancho que dê vontade de continuar.",
+  ].join("\n\n");
+}

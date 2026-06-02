@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { KEYWORD_SYSTEM, buildKeywordPrompt } from "@/lib/ai/prompts";
+import {
+  KEYWORD_SYSTEM,
+  buildKeywordPrompt,
+  buildChapterSystem,
+  buildChapterPrompt,
+} from "@/lib/ai/prompts";
 
 export const MODEL_MAIN =
   process.env.ANTHROPIC_MODEL_MAIN ?? "claude-sonnet-4-6";
@@ -71,4 +76,36 @@ export async function suggestKeywords(params: {
   return input.palavras
     .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
     .slice(0, count);
+}
+
+/**
+ * Abre um stream de geração de capítulo (Sonnet). Retorna o MessageStream do
+ * SDK (o chamador consome `.on("text")` e `.finalMessage()`), ou null sem key.
+ * O brief vai no system com cache_control (ativa quando o contexto cresce).
+ */
+export function createChapterStream(params: {
+  briefText: string;
+  index: number;
+  prevContext?: string;
+}) {
+  const anthropic = getAnthropic();
+  if (!anthropic) return null;
+
+  return anthropic.messages.stream({
+    model: MODEL_MAIN,
+    max_tokens: 3500,
+    system: [
+      {
+        type: "text",
+        text: buildChapterSystem(params.briefText),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      {
+        role: "user",
+        content: buildChapterPrompt(params.index, params.prevContext),
+      },
+    ],
+  });
 }

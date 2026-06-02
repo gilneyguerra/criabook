@@ -198,9 +198,15 @@ export function PromptBuilder({
           {saving ? "Salvando..." : "Salvar base"}
         </Button>
         {saved && (
-          <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600">
+          <span className="inline-flex items-center gap-2 text-sm text-emerald-600">
             <Check className="size-4" />
-            Base salva! A geração de capítulos chega na Fase 4.
+            Base salva!
+            <Link
+              href={`/studio/${bookId}/write`}
+              className="link-underline font-medium text-foreground"
+            >
+              Ir para a escrita →
+            </Link>
           </span>
         )}
         {error && <span className="text-sm text-destructive">{error}</span>}

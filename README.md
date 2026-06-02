@@ -30,7 +30,7 @@ npm run dev
 - [x] **Fase 1** — Modelo de dados: schema Drizzle completo + pgvector + autorização por `userId` *(falta rodar a migration no Neon)*
 - [x] **Fase 2** — Créditos + Stripe: checkout, webhook idempotente, saldo e débito *(falta configurar a conta/keys Stripe)*
 - [x] **Fase 3** — Construtor de prompt: keywords clicáveis + sugestões via Haiku + base compartilhada (dedup exato + **semântico via Voyage AI/pgvector**)
-- [ ] Fase 4 — Geração de capítulo com streaming
+- [x] **Fase 4** — Geração de capítulo com streaming: SSE + efeito de digitação (TipTap) + auto-scroll + parada por page_target + débito de créditos por tokens
 - [ ] Fase 5 — Editor + chat de edição
 - [ ] Fase 6 — Versionamento + rollback
 - [ ] Fase 7 — Roadmap (React Flow)
