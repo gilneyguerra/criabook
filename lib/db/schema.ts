@@ -226,7 +226,7 @@ export const keywords = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     category: keywordCategory("category").notNull(),
     value: text("value").notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }),
+    embedding: vector("embedding", { dimensions: 1024 }), // Voyage voyage-3.5
     usageCount: integer("usage_count").notNull().default(1),
     createdBy: text("created_by").references(() => user.id, {
       onDelete: "set null",

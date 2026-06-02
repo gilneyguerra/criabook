@@ -1,8 +1,13 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { books, keywords } from "@/lib/db/schema";
+import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
+
+// Distância de cosseno máxima para considerar duas keywords "iguais"
+// (0 = idênticas, 1 = ortogonais). ~0.12 ≈ similaridade > 0.88. Ajustável.
+const SEMANTIC_DEDUP_THRESHOLD = 0.12;
 
 /**
  * Helpers de acesso a dados ESCOPADOS PELO USUÁRIO.
@@ -56,10 +61,19 @@ export async function updateBookBrief(
   return rows[0] ?? null;
 }
 
+async function incrementKeyword(id: string) {
+  await db
+    .update(keywords)
+    .set({ usageCount: sql`${keywords.usageCount} + 1` })
+    .where(eq(keywords.id, id));
+}
+
 /**
- * Base compartilhada de palavras-chave. Dedup EXATO (case-insensitive) por
- * categoria: se já existe, incrementa usage_count; senão insere.
- * (Dedup SEMÂNTICO via pgvector fica para quando definirmos o provedor de embeddings.)
+ * Base compartilhada de palavras-chave. Dedup em duas etapas por categoria:
+ *   1) EXATO (case-insensitive) — barato, pega digitação idêntica;
+ *   2) SEMÂNTICO (pgvector, cosine) — pega sinônimos/variações via embedding Voyage.
+ * Se encontra duplicata, incrementa usage_count; senão insere (com embedding).
+ * Sem VOYAGE_API_KEY, só a etapa exata roda (embedText retorna null).
  */
 export async function upsertKeyword(
   userId: string,
@@ -69,7 +83,8 @@ export async function upsertKeyword(
   const v = value.trim();
   if (!v) return;
 
-  const existing = await db
+  // 1) Dedup exato
+  const exact = await db
     .select({ id: keywords.id })
     .from(keywords)
     .where(
@@ -79,15 +94,31 @@ export async function upsertKeyword(
       )
     )
     .limit(1);
-
-  if (existing.length) {
-    await db
-      .update(keywords)
-      .set({ usageCount: sql`${keywords.usageCount} + 1` })
-      .where(eq(keywords.id, existing[0].id));
-  } else {
-    await db
-      .insert(keywords)
-      .values({ category, value: v, createdBy: userId });
+  if (exact.length) {
+    await incrementKeyword(exact[0].id);
+    return;
   }
+
+  // 2) Dedup semântico (se houver embedding)
+  const vec = await embedText(v);
+  if (vec) {
+    const distance = cosineDistance(keywords.embedding, vec);
+    const near = await db
+      .select({ id: keywords.id, distance })
+      .from(keywords)
+      .where(and(eq(keywords.category, category), isNotNull(keywords.embedding)))
+      .orderBy(distance)
+      .limit(1);
+    if (near.length && Number(near[0].distance) < SEMANTIC_DEDUP_THRESHOLD) {
+      await incrementKeyword(near[0].id);
+      return;
+    }
+  }
+
+  await db.insert(keywords).values({
+    category,
+    value: v,
+    createdBy: userId,
+    embedding: vec ?? undefined,
+  });
 }

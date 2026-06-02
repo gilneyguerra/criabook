@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS keywords (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   category keyword_category NOT NULL,
   value text NOT NULL,
-  embedding vector(1536),
+  embedding vector(1024),
   usage_count integer NOT NULL DEFAULT 1,
   created_by text REFERENCES "user"(id) ON DELETE SET NULL,
   is_global boolean NOT NULL DEFAULT true,
