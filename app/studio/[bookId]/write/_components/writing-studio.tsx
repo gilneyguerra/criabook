@@ -14,6 +14,7 @@ import {
   RotateCcw,
   PenLine,
   History,
+  Download,
 } from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
@@ -482,6 +483,12 @@ export function WritingStudio({
                 <Sparkles className="size-4" />
               )}
               {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
+            </Button>
+            <Button asChild variant="ghost" size="sm" disabled={chapters.length === 0}>
+              <a href={`/api/export?bookId=${bookId}`} title="Baixar EPUB">
+                <Download className="size-4" />
+                EPUB
+              </a>
             </Button>
           </div>
         </header>
