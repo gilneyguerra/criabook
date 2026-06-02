@@ -138,6 +138,70 @@ export function createContinueStream(params: {
   });
 }
 
+const BEATS_TOOL: Anthropic.Tool = {
+  name: "retornar_beats",
+  description: "Retorna os beats preenchidos, na MESMA ordem recebida.",
+  input_schema: {
+    type: "object",
+    properties: {
+      beats: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+          },
+          required: ["title", "description"],
+        },
+      },
+    },
+    required: ["beats"],
+  },
+};
+
+/**
+ * Gera título + descrição de cada beat do método estrutural, específicos para
+ * o livro. Recebe os rótulos canônicos (em ordem) e devolve na mesma ordem.
+ */
+export async function generateBeats(
+  bookContext: string,
+  labels: string[]
+): Promise<{ title: string; description: string }[]> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return [];
+
+  const res = await anthropic.messages.create({
+    model: MODEL_FAST,
+    max_tokens: 2000,
+    system:
+      "Você é um roteirista/editor. Para cada beat do método estrutural, escreva " +
+      "um título curto e uma descrição de 1 a 2 frases, ESPECÍFICOS para este livro " +
+      "(use a logline, o tom e a base). Responda na MESMA ordem recebida, em pt-BR.",
+    messages: [
+      {
+        role: "user",
+        content:
+          `${bookContext}\n\nBeats (preencha cada um, nesta ordem):\n` +
+          labels.map((l, i) => `${i + 1}. ${l}`).join("\n"),
+      },
+    ],
+    tools: [BEATS_TOOL],
+    tool_choice: { type: "tool", name: BEATS_TOOL.name },
+  });
+
+  const block = res.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") return [];
+  const input = block.input as {
+    beats?: { title?: string; description?: string }[];
+  };
+  if (!Array.isArray(input.beats)) return [];
+  return input.beats.map((b) => ({
+    title: String(b.title ?? ""),
+    description: String(b.description ?? ""),
+  }));
+}
+
 /** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
 export function friendlyAiError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();

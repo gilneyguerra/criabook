@@ -11,6 +11,7 @@ import {
   worldRules,
   timelineEvents,
   glossaryTerms,
+  storyBeats,
 } from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
@@ -95,6 +96,37 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Story beats / estrutura (Fase B) ----------------------- */
+
+export async function getStoryBeats(bookId: string) {
+  return db
+    .select()
+    .from(storyBeats)
+    .where(eq(storyBeats.bookId, bookId))
+    .orderBy(storyBeats.order);
+}
+
+export async function replaceStoryBeats(
+  bookId: string,
+  beats: { order: number; title: string; summary: string; beatType: string }[]
+) {
+  await db.delete(storyBeats).where(eq(storyBeats.bookId, bookId));
+  if (beats.length) {
+    await db.insert(storyBeats).values(beats.map((b) => ({ bookId, ...b })));
+  }
+}
+
+export async function updateStoryBeat(
+  bookId: string,
+  id: string,
+  data: { title?: string; summary?: string }
+) {
+  await db
+    .update(storyBeats)
+    .set({ title: data.title, summary: data.summary })
+    .where(and(eq(storyBeats.id, id), eq(storyBeats.bookId, bookId)));
 }
 
 /* ----------------------- Book meta / matter (Fase A5) ----------------------- */
