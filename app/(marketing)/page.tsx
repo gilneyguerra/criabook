@@ -140,8 +140,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10 px-6 py-8 text-center text-sm text-zinc-500">
-        © {new Date().getFullYear()} CriaBook · Feito para quem escreve.
+      <footer className="flex flex-col items-center gap-2 border-t border-white/10 px-6 py-8 text-center text-sm text-zinc-500">
+        <div>© {new Date().getFullYear()} CriaBook · Feito para quem escreve.</div>
+        <Link href="/direitos" className="link-underline hover:text-zinc-300">
+          Direitos, IA e privacidade
+        </Link>
       </footer>
     </main>
   );
