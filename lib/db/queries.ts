@@ -57,13 +57,30 @@ export async function createBookForUser(
 export async function updateBookBrief(
   bookId: string,
   userId: string,
-  data: { title?: string; genre?: string; brief: unknown }
+  data: {
+    title?: string;
+    genre?: string;
+    brief: unknown;
+    type?: "fiction" | "nonfiction";
+    logline?: string;
+    audience?: string;
+    pov?: string;
+    tone?: string;
+    structureMethod?: string;
+  }
 ) {
+  // Drizzle ignora chaves `undefined` no SET (não sobrescreve).
   const rows = await db
     .update(books)
     .set({
       title: data.title,
       genre: data.genre,
+      type: data.type,
+      logline: data.logline,
+      audience: data.audience,
+      pov: data.pov,
+      tone: data.tone,
+      structureMethod: data.structureMethod,
       brief: data.brief,
       updatedAt: new Date(),
     })

@@ -14,7 +14,7 @@ import {
   createContinueStream,
   friendlyAiError,
 } from "@/lib/ai/claude";
-import { briefToText } from "@/lib/ai/prompts";
+import { bookContextText } from "@/lib/ai/prompts";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import { textToDoc, wordCount } from "@/lib/tiptap";
 import { retrieveContext, summarizeChapter, indexChapter } from "@/lib/ai/rag";
@@ -47,10 +47,17 @@ export async function POST(request: Request) {
   }
 
   const userId = session.user.id;
-  const briefText = briefToText(
-    book.brief as Record<string, string[]>,
-    book.title
-  );
+  const briefText = bookContextText({
+    title: book.title,
+    type: book.type,
+    logline: book.logline,
+    genre: book.genre,
+    audience: book.audience,
+    pov: book.pov,
+    tone: book.tone,
+    structureMethod: book.structureMethod,
+    brief: book.brief as Record<string, string[]>,
+  });
   const encoder = new TextEncoder();
   const sseHeaders = {
     "Content-Type": "text/event-stream; charset=utf-8",

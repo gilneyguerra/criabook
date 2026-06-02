@@ -11,18 +11,52 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type Selections = Record<string, string[]>;
+type Editorial = {
+  type: "fiction" | "nonfiction";
+  logline: string;
+  audience: string;
+  pov: string;
+  tone: string;
+  structureMethod: string;
+};
+
+const POV_OPTIONS = [
+  { v: "", l: "—" },
+  { v: "first_past", l: "1ª pessoa, passado" },
+  { v: "first_present", l: "1ª pessoa, presente" },
+  { v: "third_past", l: "3ª pessoa, passado" },
+  { v: "third_present", l: "3ª pessoa, presente" },
+  { v: "omniscient", l: "Narrador onisciente" },
+];
+
+const STRUCTURE_OPTIONS = [
+  { v: "", l: "—" },
+  { v: "three_act", l: "3 atos (universal)" },
+  { v: "hero_journey", l: "Jornada do Herói" },
+  { v: "save_the_cat", l: "Save the Cat! (15 beats)" },
+  { v: "story_circle", l: "Story Circle (Dan Harmon)" },
+  { v: "nonfiction", l: "Não-ficção: Problema → Solução" },
+];
 
 export function PromptBuilder({
   bookId,
   initialTitle,
   initialSelections,
+  initialEditorial,
 }: {
   bookId: string;
   initialTitle: string;
   initialSelections: Selections;
+  initialEditorial: Editorial;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [selections, setSelections] = useState<Selections>(initialSelections);
+  const [editorial, setEditorial] = useState<Editorial>(initialEditorial);
+
+  function setEd<K extends keyof Editorial>(k: K, v: Editorial[K]) {
+    setEditorial((e) => ({ ...e, [k]: v }));
+    setSaved(false);
+  }
   const [suggestions, setSuggestions] = useState<Selections>({});
   const [loadingCat, setLoadingCat] = useState<string | null>(null);
   const [custom, setCustom] = useState<Record<string, string>>({});
@@ -75,7 +109,16 @@ export function PromptBuilder({
   async function handleSave() {
     setSaving(true);
     setError(null);
-    const result = await saveBrief(bookId, { title, selections });
+    const result = await saveBrief(bookId, {
+      title,
+      selections,
+      type: editorial.type,
+      logline: editorial.logline,
+      audience: editorial.audience,
+      pov: editorial.pov,
+      tone: editorial.tone,
+      structureMethod: editorial.structureMethod,
+    });
     setSaving(false);
     if (result?.error) setError(result.error);
     else setSaved(true);
@@ -106,6 +149,99 @@ export function PromptBuilder({
           placeholder="Ex.: A última carta"
         />
       </div>
+
+      {/* Base editorial (camada de ofício) */}
+      <section className="mb-10 flex flex-col gap-4 rounded-xl border p-5">
+        <h2 className="font-medium">Base editorial</h2>
+
+        <div className="flex gap-2">
+          {(["fiction", "nonfiction"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setEd("type", t)}
+              className={`rounded-full border px-3 py-1 text-sm ${
+                editorial.type === t
+                  ? "border-indigo-500 bg-indigo-500 text-white"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {t === "fiction" ? "Ficção" : "Não-ficção"}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="logline">
+            {editorial.type === "fiction"
+              ? "Promessa central (logline)"
+              : "Transformação prometida"}
+          </Label>
+          <textarea
+            id="logline"
+            rows={2}
+            value={editorial.logline}
+            onChange={(e) => setEd("logline", e.target.value)}
+            placeholder={
+              editorial.type === "fiction"
+                ? "Que pergunta o livro faz e por que virar a página?"
+                : "Quem lê sai de X e chega em Y."
+            }
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="audience">Público-alvo</Label>
+            <Input
+              id="audience"
+              value={editorial.audience}
+              onChange={(e) => setEd("audience", e.target.value)}
+              placeholder="Quem vai ler (e o nível)"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tone">Tom</Label>
+            <Input
+              id="tone"
+              value={editorial.tone}
+              onChange={(e) => setEd("tone", e.target.value)}
+              placeholder="sombrio, leve, lírico..."
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pov">POV</Label>
+            <select
+              id="pov"
+              value={editorial.pov}
+              onChange={(e) => setEd("pov", e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              {POV_OPTIONS.map((o) => (
+                <option key={o.v} value={o.v}>
+                  {o.l}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="structure">Método estrutural</Label>
+            <select
+              id="structure"
+              value={editorial.structureMethod}
+              onChange={(e) => setEd("structureMethod", e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              {STRUCTURE_OPTIONS.map((o) => (
+                <option key={o.v} value={o.v}>
+                  {o.l}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
 
       <div className="flex flex-col gap-8">
         {KEYWORD_CATEGORIES.map((cat) => (

@@ -43,6 +43,34 @@ export function briefToText(
   return parts.join("\n") || "Sem base definida.";
 }
 
+/** Contexto editorial completo do livro (camada de ofício) para o system prompt. */
+export function bookContextText(book: {
+  title?: string | null;
+  type?: string | null;
+  logline?: string | null;
+  genre?: string | null;
+  audience?: string | null;
+  pov?: string | null;
+  tone?: string | null;
+  structureMethod?: string | null;
+  brief?: Record<string, string[]> | null;
+}): string {
+  const isNon = book.type === "nonfiction";
+  const parts: string[] = [];
+  if (book.title) parts.push(`Título: ${book.title}`);
+  parts.push(`Tipo: ${isNon ? "não-ficção" : "ficção"}`);
+  if (book.logline)
+    parts.push(`${isNon ? "Transformação prometida" : "Logline"}: ${book.logline}`);
+  if (book.genre) parts.push(`Gênero: ${book.genre}`);
+  if (book.audience) parts.push(`Público-alvo: ${book.audience}`);
+  if (book.pov) parts.push(`POV: ${book.pov}`);
+  if (book.tone) parts.push(`Tom: ${book.tone}`);
+  if (book.structureMethod) parts.push(`Estrutura: ${book.structureMethod}`);
+  const kw = briefToText(book.brief ?? null);
+  if (kw && kw !== "Sem base definida.") parts.push(kw);
+  return parts.join("\n") || "Sem base definida.";
+}
+
 export function buildChapterSystem(briefText: string): string {
   return (
     "Você é um escritor profissional de ficção em português do Brasil. " +

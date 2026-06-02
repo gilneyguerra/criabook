@@ -24,6 +24,14 @@ export default async function PromptPage({
       bookId={bookId}
       initialTitle={book.title ?? ""}
       initialSelections={brief}
+      initialEditorial={{
+        type: (book.type as "fiction" | "nonfiction") ?? "fiction",
+        logline: book.logline ?? "",
+        audience: book.audience ?? "",
+        pov: book.pov ?? "",
+        tone: book.tone ?? "",
+        structureMethod: book.structureMethod ?? "",
+      }}
     />
   );
 }
