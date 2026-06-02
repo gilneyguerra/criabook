@@ -34,6 +34,15 @@ DO $$ BEGIN
   CREATE TYPE export_format AS ENUM ('pdf_web','pdf_print','epub');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE book_type AS ENUM ('fiction','nonfiction');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE rag_source_type AS ENUM
+    ('chapter','character','location','world_rule','glossary');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- ---------- Better Auth ----------
 CREATE TABLE IF NOT EXISTS "user" (
   id text PRIMARY KEY,
@@ -96,6 +105,12 @@ CREATE TABLE IF NOT EXISTS books (
   owner_id text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   title text,
   genre text,
+  type book_type NOT NULL DEFAULT 'fiction',
+  logline text,
+  audience text,
+  pov text,
+  tone text,
+  structure_method text,
   language text NOT NULL DEFAULT 'pt-BR',
   is_adult boolean NOT NULL DEFAULT false,
   status book_status NOT NULL DEFAULT 'draft',
@@ -122,6 +137,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   subtitle text,
   content_json jsonb,
   content_text text,
+  summary text,
   status chapter_status NOT NULL DEFAULT 'pending',
   tokens_used integer NOT NULL DEFAULT 0,
   created_at timestamp NOT NULL DEFAULT now(),
@@ -202,3 +218,65 @@ CREATE TABLE IF NOT EXISTS exports (
   storage_path text NOT NULL,
   created_at timestamp NOT NULL DEFAULT now()
 );
+
+-- ---------- Bíblia da História (Fase A) ----------
+CREATE TABLE IF NOT EXISTS characters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  role text,
+  appearance text,
+  traits text,
+  arc text,
+  notes text,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS locations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  description text,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS world_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  category text,
+  rule text NOT NULL,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS timeline_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  "order" integer NOT NULL DEFAULT 0,
+  description text NOT NULL,
+  chapter_ref integer,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS glossary_terms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  term text NOT NULL,
+  definition text NOT NULL,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+-- ---------- RAG (Fase A) ----------
+CREATE TABLE IF NOT EXISTS rag_chunks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  book_id uuid NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  source_type rag_source_type NOT NULL,
+  source_id text NOT NULL,
+  chunk_text text NOT NULL,
+  embedding vector(1024),
+  created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS rag_chunks_book_source_idx
+  ON rag_chunks (book_id, source_type);
+CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx
+  ON rag_chunks USING hnsw (embedding vector_cosine_ops);

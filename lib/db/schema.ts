@@ -115,6 +115,8 @@ export const exportFormat = pgEnum("export_format", [
   "epub",
 ]);
 
+export const bookType = pgEnum("book_type", ["fiction", "nonfiction"]);
+
 /* ============================================================
  * Tabelas de domínio (CriaBook)
  * Autorização é feita na aplicação: toda query filtra por owner/userId.
@@ -139,6 +141,13 @@ export const books = pgTable("books", {
     .references(() => user.id, { onDelete: "cascade" }),
   title: text("title"),
   genre: text("genre"),
+  // Camada de ofício (Fase A — wizard editorial)
+  type: bookType("type").notNull().default("fiction"),
+  logline: text("logline"), // promessa central / transformação prometida
+  audience: text("audience"), // leitor-alvo e nível
+  pov: text("pov"), // ex.: "first_past", "third_present"
+  tone: text("tone"),
+  structureMethod: text("structure_method"), // three_act | hero_journey | save_the_cat | story_circle | nonfiction
   language: text("language").notNull().default("pt-BR"),
   isAdult: boolean("is_adult").notNull().default(false),
   status: bookStatus("status").notNull().default("draft"),
@@ -171,6 +180,7 @@ export const chapters = pgTable("chapters", {
   subtitle: text("subtitle"),
   contentJson: jsonb("content_json"), // documento TipTap/ProseMirror
   contentText: text("content_text"), // texto puro p/ busca/contagem
+  summary: text("summary"), // resumo de 1 parágrafo (RAG)
   status: chapterStatus("status").notNull().default("pending"),
   tokensUsed: integer("tokens_used").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -202,6 +212,99 @@ export const storyBeats = pgTable("story_beats", {
     onDelete: "set null",
   }),
 });
+
+/* ============================================================
+ * Bíblia da História (Fase A) — fonte única de verdade
+ * ============================================================ */
+
+export const characters = pgTable("characters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  role: text("role"), // protagonista, antagonista, secundário
+  appearance: text("appearance"),
+  traits: text("traits"),
+  arc: text("arc"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const locations = pgTable("locations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const worldRules = pgTable("world_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  category: text("category"), // magia, tecnologia, política...
+  rule: text("rule").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const timelineEvents = pgTable("timeline_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  order: integer("order").notNull().default(0),
+  description: text("description").notNull(),
+  chapterRef: integer("chapter_ref"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const glossaryTerms = pgTable("glossary_terms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .references(() => books.id, { onDelete: "cascade" }),
+  term: text("term").notNull(),
+  definition: text("definition").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/* ============================================================
+ * RAG — chunks indexados (capítulos + Bíblia) p/ recuperação
+ * ============================================================ */
+
+export const ragSourceType = pgEnum("rag_source_type", [
+  "chapter",
+  "character",
+  "location",
+  "world_rule",
+  "glossary",
+]);
+
+export const ragChunks = pgTable(
+  "rag_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    sourceType: ragSourceType("source_type").notNull(),
+    sourceId: text("source_id").notNull(), // id da fonte (chapter/character/...)
+    chunkText: text("chunk_text").notNull(),
+    embedding: vector("embedding", { dimensions: 1024 }), // Voyage voyage-3.5
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("rag_chunks_book_source_idx").on(table.bookId, table.sourceType),
+    index("rag_chunks_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops")
+    ),
+  ]
+);
 
 export const versions = pgTable("versions", {
   id: uuid("id").primaryKey().defaultRandom(),

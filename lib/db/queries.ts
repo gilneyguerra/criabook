@@ -94,7 +94,12 @@ export async function createChapter(
 
 export async function completeChapter(
   id: string,
-  data: { contentJson: unknown; contentText: string; tokensUsed: number }
+  data: {
+    contentJson: unknown;
+    contentText: string;
+    tokensUsed: number;
+    summary?: string;
+  }
 ) {
   await db
     .update(chapters)
@@ -102,6 +107,7 @@ export async function completeChapter(
       contentJson: data.contentJson,
       contentText: data.contentText,
       tokensUsed: data.tokensUsed,
+      ...(data.summary ? { summary: data.summary } : {}),
       status: "review",
       updatedAt: new Date(),
     })

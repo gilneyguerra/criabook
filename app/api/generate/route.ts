@@ -17,6 +17,7 @@ import {
 import { briefToText } from "@/lib/ai/prompts";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import { textToDoc, wordCount } from "@/lib/tiptap";
+import { retrieveContext, summarizeChapter, indexChapter } from "@/lib/ai/rag";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,14 @@ export async function POST(request: Request) {
   /* ---------- Modo: continuar o capítulo atual ---------- */
   if (mode === "continue") {
     const ctx = typeof context === "string" ? context.slice(-3000) : "";
-    const stream = createContinueStream({ briefText, context: ctx });
+    const retrieved = await retrieveContext(bookId, ctx || briefText, 4);
+    const fullCtx = [
+      retrieved.length ? `Trechos relevantes:\n${retrieved.join("\n---\n")}` : "",
+      ctx,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const stream = createContinueStream({ briefText, context: fullCtx });
     if (!stream) {
       return NextResponse.json(
         { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
@@ -97,8 +105,24 @@ export async function POST(request: Request) {
   /* ---------- Modo: novo capítulo (padrão) ---------- */
   const existing = await getChapters(bookId);
   const index = existing.length + 1;
-  const prev = existing[existing.length - 1]?.contentText ?? "";
-  const prevContext = prev ? prev.slice(0, 1500) : undefined;
+  // Contexto RAG: resumo rolante (resumos dos capítulos) + trechos recuperados.
+  const rolling = existing
+    .map((c) => c.summary ?? (c.contentText ?? "").slice(0, 200))
+    .filter(Boolean)
+    .join("\n");
+  const retrieved = await retrieveContext(
+    bookId,
+    `${briefText}\nCapítulo ${index}`,
+    5
+  );
+  const prevContext =
+    [
+      rolling && `Resumo da história até aqui:\n${rolling}`,
+      retrieved.length &&
+        `Trechos relevantes (capítulos/Bíblia):\n${retrieved.join("\n---\n")}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
 
   const stream = createChapterStream({ briefText, index, prevContext });
   if (!stream) {
@@ -132,11 +156,16 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
 
+        const summary = await summarizeChapter(fullText);
         await completeChapter(chapter.id, {
           contentJson: textToDoc(fullText),
           contentText: fullText,
           tokensUsed: usage.output_tokens,
+          summary,
         });
+        try {
+          await indexChapter(bookId, chapter.id, fullText);
+        } catch {}
         try {
           await debitCredits(userId, credits, "geração de capítulo", chapter.id);
         } catch {}
