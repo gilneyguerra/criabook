@@ -65,6 +65,14 @@ export function buildChapterPrompt(index: number, prevContext?: string): string 
   ].join("\n\n");
 }
 
+export function buildContinuePrompt(context: string): string {
+  return [
+    "Continue o capítulo a seguir a partir de onde ele parou. NÃO repita nem reescreva o que já foi escrito — apenas dê sequência natural.",
+    "Mantenha o mesmo tom, tempo verbal e continuidade. Escreva de 400 a 700 palavras, em parágrafos separados por linha em branco.",
+    "Final do texto até agora:\n" + context,
+  ].join("\n\n");
+}
+
 // --- Humanizer (skill blader/humanizer) ---
 // Diretrizes para reescrever um trecho de forma que soe humana, removendo
 // os "AI tells", preservando sentido, estrutura e voz.

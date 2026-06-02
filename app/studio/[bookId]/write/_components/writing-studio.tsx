@@ -12,6 +12,7 @@ import {
   Wand2,
   Save,
   RotateCcw,
+  PenLine,
 } from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
@@ -250,6 +251,58 @@ export function WritingStudio({
     }
   }
 
+  async function continueChapter() {
+    if (!editor) return;
+    const id = activeIdRef.current;
+    if (!id) {
+      setMessage("Abra um capítulo para continuar.");
+      return;
+    }
+    setGenerating(true);
+    setMessage(null);
+    setInsufficient(false);
+    setRecovery(null);
+    const baseText = editor.getText({ blockSeparator: "\n\n" });
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId, mode: "continue", context: baseText.slice(-3000) }),
+      });
+      if (res.status === 402) {
+        setInsufficient(true);
+        return;
+      }
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setMessage(data.error ?? "Não foi possível continuar o capítulo.");
+        return;
+      }
+
+      let added = "";
+      await readSSE(
+        res,
+        (text) => {
+          added += text;
+          editor.commands.setContent(textToDoc(baseText + "\n\n" + added), false);
+          scrollToBottom();
+        },
+        (evt) => {
+          if (typeof evt.balance === "number") setBalance(evt.balance);
+        }
+      );
+      if (added.trim()) {
+        const finalText = baseText + "\n\n" + added;
+        void persist(id, editor.getJSON(), finalText);
+      }
+    } catch {
+      setMessage("Falha de conexão durante a geração.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function humanize() {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -387,6 +440,16 @@ export function WritingStudio({
             >
               <Save className="size-4" />
               Salvar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={continueChapter}
+              disabled={busy || !activeId}
+              title="Gera mais texto dentro do capítulo aberto"
+            >
+              <PenLine className="size-4" />
+              Continuar capítulo
             </Button>
             <Button onClick={generate} disabled={busy}>
               {generating ? (

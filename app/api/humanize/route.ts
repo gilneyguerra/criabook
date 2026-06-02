@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 
 import { auth } from "@/lib/auth";
-import { createHumanizeStream } from "@/lib/ai/claude";
+import { createHumanizeStream, friendlyAiError } from "@/lib/ai/claude";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 
 export const runtime = "nodejs";
@@ -65,11 +65,8 @@ export async function POST(request: Request) {
         send({ type: "done", debited: credits, balance: balance - credits });
         controller.close();
       } catch (err) {
-        send({
-          type: "error",
-          message:
-            err instanceof Error ? `Falha ao humanizar: ${err.message}` : "Falha ao humanizar.",
-        });
+        console.error("humanize error", err);
+        send({ type: "error", message: friendlyAiError(err) });
         controller.close();
       }
     },

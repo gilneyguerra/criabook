@@ -7,6 +7,7 @@ import {
   buildChapterPrompt,
   HUMANIZER_SYSTEM,
   buildHumanizePrompt,
+  buildContinuePrompt,
 } from "@/lib/ai/prompts";
 
 export const MODEL_MAIN =
@@ -110,6 +111,49 @@ export function createChapterStream(params: {
       },
     ],
   });
+}
+
+/**
+ * Continua um capítulo já existente (não reescreve o que há). Mesma base no
+ * system (brief); o contexto é o final do texto atual.
+ */
+export function createContinueStream(params: {
+  briefText: string;
+  context: string;
+}) {
+  const anthropic = getAnthropic();
+  if (!anthropic) return null;
+
+  return anthropic.messages.stream({
+    model: MODEL_MAIN,
+    max_tokens: 2500,
+    system: [
+      {
+        type: "text",
+        text: buildChapterSystem(params.briefText),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [{ role: "user", content: buildContinuePrompt(params.context) }],
+  });
+}
+
+/** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
+export function friendlyAiError(err: unknown): string {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (msg.includes("overloaded"))
+    return "O serviço de IA está sobrecarregado agora. Tente novamente em alguns segundos.";
+  if (msg.includes("credit balance") || msg.includes("billing"))
+    return "O serviço de IA está temporariamente indisponível. Tente mais tarde.";
+  if (msg.includes("rate_limit") || msg.includes("429"))
+    return "Muitas solicitações seguidas. Aguarde um instante e tente de novo.";
+  if (
+    msg.includes("authentication") ||
+    msg.includes("x-api-key") ||
+    msg.includes("401")
+  )
+    return "Serviço de IA indisponível (configuração). Avise o administrador.";
+  return "Não foi possível concluir agora. Tente novamente.";
 }
 
 /**

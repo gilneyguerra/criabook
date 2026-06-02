@@ -9,7 +9,11 @@ import {
   completeChapter,
   setBookStatus,
 } from "@/lib/db/queries";
-import { createChapterStream } from "@/lib/ai/claude";
+import {
+  createChapterStream,
+  createContinueStream,
+  friendlyAiError,
+} from "@/lib/ai/claude";
 import { briefToText } from "@/lib/ai/prompts";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import { textToDoc, wordCount } from "@/lib/tiptap";
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const { bookId } = await request.json().catch(() => ({}));
+  const { bookId, mode, context } = await request.json().catch(() => ({}));
   const book = await getBookForUser(String(bookId), session.user.id).catch(
     () => null
   );
@@ -32,26 +36,71 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Livro não encontrado." }, { status: 404 });
   }
 
-  // Pré-checagem de créditos (estimativa de um capítulo).
   const estimate = creditsForUsage({ tokensIn: 1500, tokensOut: 3500 });
   const balance = await getBalance(session.user.id);
   if (balance < estimate) {
     return NextResponse.json(
-      { error: "Créditos insuficientes para gerar um capítulo." },
+      { error: "Créditos insuficientes para gerar." },
       { status: 402 }
     );
   }
 
+  const userId = session.user.id;
+  const briefText = briefToText(
+    book.brief as Record<string, string[]>,
+    book.title
+  );
+  const encoder = new TextEncoder();
+  const sseHeaders = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  };
+
+  /* ---------- Modo: continuar o capítulo atual ---------- */
+  if (mode === "continue") {
+    const ctx = typeof context === "string" ? context.slice(-3000) : "";
+    const stream = createContinueStream({ briefText, context: ctx });
+    if (!stream) {
+      return NextResponse.json(
+        { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
+        { status: 503 }
+      );
+    }
+
+    const body = new ReadableStream({
+      async start(controller) {
+        const send = (obj: unknown) =>
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        try {
+          stream.on("text", (delta: string) => send({ type: "delta", text: delta }));
+          const finalMsg = await stream.finalMessage();
+          const credits = creditsForUsage({
+            tokensIn: finalMsg.usage.input_tokens,
+            tokensOut: finalMsg.usage.output_tokens,
+          });
+          try {
+            await debitCredits(userId, credits, "continuar capítulo");
+          } catch {}
+          send({ type: "done", debited: credits, balance: balance - credits });
+          controller.close();
+        } catch (err) {
+          console.error("continue error", err);
+          send({ type: "error", message: friendlyAiError(err) });
+          controller.close();
+        }
+      },
+    });
+    return new Response(body, { headers: sseHeaders });
+  }
+
+  /* ---------- Modo: novo capítulo (padrão) ---------- */
   const existing = await getChapters(bookId);
   const index = existing.length + 1;
   const prev = existing[existing.length - 1]?.contentText ?? "";
   const prevContext = prev ? prev.slice(0, 1500) : undefined;
 
-  const stream = createChapterStream({
-    briefText: briefToText(book.brief as Record<string, string[]>, book.title),
-    index,
-    prevContext,
-  });
+  const stream = createChapterStream({ briefText, index, prevContext });
   if (!stream) {
     return NextResponse.json(
       { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
@@ -60,27 +109,22 @@ export async function POST(request: Request) {
   }
 
   const chapter = await createChapter(bookId, index, `Capítulo ${index}`);
-  const userId = session.user.id;
   const priorWords = existing.reduce(
     (acc, c) => acc + wordCount(c.contentText ?? ""),
     0
   );
   const target = (book.pageTarget ?? 0) * 280;
-
-  const encoder = new TextEncoder();
   let fullText = "";
 
   const body = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-
       try {
         stream.on("text", (delta: string) => {
           fullText += delta;
           send({ type: "delta", text: delta });
         });
-
         const finalMsg = await stream.finalMessage();
         const usage = finalMsg.usage;
         const credits = creditsForUsage({
@@ -88,7 +132,6 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
 
-        // Salva o capítulo primeiro (não perde o texto se o débito falhar).
         await completeChapter(chapter.id, {
           contentJson: textToDoc(fullText),
           contentText: fullText,
@@ -96,15 +139,11 @@ export async function POST(request: Request) {
         });
         try {
           await debitCredits(userId, credits, "geração de capítulo", chapter.id);
-        } catch {
-          // débito best-effort; o capítulo já está salvo
-        }
+        } catch {}
 
         const totalWords = priorWords + wordCount(fullText);
         const targetReached = target > 0 && totalWords >= target;
-        if (targetReached) {
-          await setBookStatus(bookId, userId, "review");
-        }
+        if (targetReached) await setBookStatus(bookId, userId, "review");
 
         send({
           type: "done",
@@ -120,23 +159,12 @@ export async function POST(request: Request) {
         });
         controller.close();
       } catch (err) {
-        send({
-          type: "error",
-          message:
-            err instanceof Error
-              ? `Falha na geração: ${err.message}`
-              : "Falha na geração do capítulo.",
-        });
+        console.error("generate error", err);
+        send({ type: "error", message: friendlyAiError(err) });
         controller.close();
       }
     },
   });
 
-  return new Response(body, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(body, { headers: sseHeaders });
 }
