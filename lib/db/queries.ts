@@ -12,6 +12,7 @@ import {
   timelineEvents,
   glossaryTerms,
   storyBeats,
+  versions,
 } from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
@@ -96,6 +97,44 @@ async function incrementKeyword(id: string) {
     .update(keywords)
     .set({ usageCount: sql`${keywords.usageCount} + 1` })
     .where(eq(keywords.id, id));
+}
+
+/* ----------------------- Versionamento (Fase B) ----------------------- */
+
+export type ChapterSnapshot = { contentText: string; contentJson: unknown };
+
+export async function createVersion(
+  bookId: string,
+  chapterId: string,
+  label: string,
+  snapshot: ChapterSnapshot
+) {
+  await db.insert(versions).values({ bookId, chapterId, label, snapshot });
+}
+
+export async function getVersions(bookId: string) {
+  return db
+    .select({
+      id: versions.id,
+      label: versions.label,
+      chapterId: versions.chapterId,
+      chapterTitle: chapters.title,
+      createdAt: versions.createdAt,
+    })
+    .from(versions)
+    .leftJoin(chapters, eq(chapters.id, versions.chapterId))
+    .where(eq(versions.bookId, bookId))
+    .orderBy(desc(versions.createdAt))
+    .limit(100);
+}
+
+export async function getVersionRow(bookId: string, versionId: string) {
+  const rows = await db
+    .select()
+    .from(versions)
+    .where(and(eq(versions.id, versionId), eq(versions.bookId, bookId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 /* ----------------------- Story beats / estrutura (Fase B) ----------------------- */

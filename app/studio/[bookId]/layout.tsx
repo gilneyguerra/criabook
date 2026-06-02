@@ -23,6 +23,7 @@ export default async function StudioLayout({
     { href: `/studio/${bookId}/bible`, label: "Bíblia" },
     { href: `/studio/${bookId}/roadmap`, label: "Mapa" },
     { href: `/studio/${bookId}/check`, label: "Revisão" },
+    { href: `/studio/${bookId}/versions`, label: "Versões" },
     { href: `/studio/${bookId}/matter`, label: "Páginas" },
     { href: `/studio/${bookId}/prompt`, label: "Base" },
   ];

@@ -8,6 +8,7 @@ import {
   createChapter,
   completeChapter,
   setBookStatus,
+  createVersion,
 } from "@/lib/db/queries";
 import {
   createChapterStream,
@@ -172,6 +173,12 @@ export async function POST(request: Request) {
         });
         try {
           await indexChapter(bookId, chapter.id, fullText);
+        } catch {}
+        try {
+          await createVersion(bookId, chapter.id, `Gerado: ${chapter.title}`, {
+            contentText: fullText,
+            contentJson: textToDoc(fullText),
+          });
         } catch {}
         try {
           await debitCredits(userId, credits, "geração de capítulo", chapter.id);

@@ -13,11 +13,12 @@ import {
   Save,
   RotateCcw,
   PenLine,
+  History,
 } from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
-import { saveChapter } from "../actions";
+import { saveChapter, snapshotChapter } from "../actions";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -154,6 +155,19 @@ export function WritingStudio({
       editor.getJSON(),
       editor.getText({ blockSeparator: "\n\n" })
     );
+  }
+
+  async function handleSnapshot() {
+    if (!editor || !activeIdRef.current) return;
+    setSaving(true);
+    await snapshotChapter(bookId, activeIdRef.current, {
+      contentJson: editor.getJSON(),
+      contentText: editor.getText({ blockSeparator: "\n\n" }),
+    });
+    setSaving(false);
+    setDirty(false);
+    setLastSaved(Date.now());
+    if (activeIdRef.current) clearDraft(activeIdRef.current);
   }
 
   function restore() {
@@ -440,6 +454,16 @@ export function WritingStudio({
             >
               <Save className="size-4" />
               Salvar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSnapshot}
+              disabled={busy || !activeId || saving}
+              title="Salva um ponto de versão restaurável"
+            >
+              <History className="size-4" />
+              Versão
             </Button>
             <Button
               variant="outline"
