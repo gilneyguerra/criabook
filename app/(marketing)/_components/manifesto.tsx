@@ -1,22 +1,24 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { HeroHighlight, Highlight } from "@/components/ui/hero-highlight";
+import { Highlight } from "@/components/ui/hero-highlight";
+import { AetherFlowBackground } from "@/components/ui/aether-flow-hero";
 
 export function Manifesto() {
   return (
-    <HeroHighlight containerClassName="bg-zinc-950">
+    <section className="relative flex min-h-[40rem] w-full items-center justify-center overflow-hidden bg-zinc-950">
+      <AetherFlowBackground />
       <motion.h2
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: [20, -5, 0] }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-        className="mx-auto max-w-4xl px-4 text-center font-serif text-2xl font-semibold leading-relaxed text-zinc-100 md:text-4xl md:leading-snug"
+        className="relative z-10 mx-auto max-w-4xl px-6 text-center font-serif text-2xl font-semibold leading-relaxed text-zinc-100 md:text-4xl md:leading-snug"
       >
-        Você não começa de uma página em branco. Você começa de uma ideia, e a
-        escrita acontece{" "}
+        Cada ideia é uma rede de conexões. Aqui elas se ligam e a escrita
+        acontece{" "}
         <Highlight className="text-white">diante dos seus olhos.</Highlight>
       </motion.h2>
-    </HeroHighlight>
+    </section>
   );
 }
