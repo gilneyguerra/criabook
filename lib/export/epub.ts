@@ -46,7 +46,7 @@ export async function buildEpub(
       tocTitle: "Sumário",
       css: epubCss(profile),
       // Nosso render semântico já emite o <h1> do capítulo; evita título duplo.
-      appendChapterTitles: false,
+      prependChapterTitles: false,
     },
     content
   );
