@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Sparkles, Coins, Loader2, BookOpen } from "lucide-react";
+import {
+  Sparkles,
+  Coins,
+  Loader2,
+  BookOpen,
+  Wand2,
+  Save,
+  RotateCcw,
+} from "lucide-react";
 
 import { textToDoc, wordCount } from "@/lib/tiptap";
+import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
+import { saveChapter } from "../actions";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -34,15 +44,43 @@ export function WritingStudio({
     initialChapters[0]?.id ?? null
   );
   const [generating, setGenerating] = useState(false);
+  const [humanizing, setHumanizing] = useState(false);
   const [balance, setBalance] = useState(initialBalance);
   const [message, setMessage] = useState<string | null>(null);
   const [insufficient, setInsufficient] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<number | null>(null);
+  const [recovery, setRecovery] = useState<Draft | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef<string | null>(activeId);
+  const chaptersRef = useRef<Chapter[]>(chapters);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  chaptersRef.current = chapters;
+
+  const persist = useCallback(
+    async (id: string, json: unknown, text: string) => {
+      setSaving(true);
+      const res = await saveChapter(id, { contentJson: json, contentText: text });
+      setSaving(false);
+      if (res && "ok" in res && res.ok) {
+        setDirty(false);
+        setLastSaved(Date.now());
+        clearDraft(id);
+        setChapters((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, contentText: text } : c))
+        );
+      } else if (res && "error" in res && res.error) {
+        setMessage(res.error);
+      }
+    },
+    []
+  );
 
   const editor = useEditor({
     extensions: [StarterKit],
-    editable: false,
+    editable: true,
     immediatelyRender: false,
     content: initialChapters[0]
       ? textToDoc(initialChapters[0].contentText)
@@ -50,26 +88,113 @@ export function WritingStudio({
     editorProps: {
       attributes: {
         class:
-          "prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none",
+          "prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh]",
       },
+    },
+    onUpdate: ({ editor }) => {
+      const id = activeIdRef.current;
+      if (!id) return;
+      setDirty(true);
+      const json = editor.getJSON();
+      const text = editor.getText({ blockSeparator: "\n\n" });
+      saveDraft(id, { json, text, at: Date.now() });
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = setTimeout(() => void persist(id, json, text), 2500);
     },
   });
 
-  // Mostra o capítulo ativo no editor (quando não está gerando).
+  // Mantém o editor não-editável durante streaming.
   useEffect(() => {
-    if (!editor || generating || !activeId) return;
-    const ch = chapters.find((c) => c.id === activeId);
-    if (ch) editor.commands.setContent(textToDoc(ch.contentText), false);
-  }, [activeId, editor, generating, chapters]);
+    editor?.setEditable(!generating && !humanizing);
+  }, [editor, generating, humanizing]);
 
-  const totalWords =
-    chapters.reduce((acc, c) => acc + wordCount(c.contentText), 0);
+  // Troca de capítulo: carrega o conteúdo e checa rascunho de recuperação.
+  useEffect(() => {
+    activeIdRef.current = activeId;
+    if (!editor || generating || humanizing || !activeId) return;
+    const ch = chaptersRef.current.find((c) => c.id === activeId);
+    if (!ch) return;
+    editor.commands.setContent(textToDoc(ch.contentText), false);
+    setDirty(false);
+
+    const draft = loadDraft(activeId);
+    if (draft && draft.text.trim() && draft.text !== ch.contentText) {
+      setRecovery(draft);
+    } else {
+      setRecovery(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, editor]);
+
+  // Aviso ao fechar a aba com alterações não salvas.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
+  const totalWords = chapters.reduce((acc, c) => acc + wordCount(c.contentText), 0);
   const targetWords = pageTarget * 280;
-  const targetReached = targetWords > 0 && totalWords >= targetWords;
 
   function scrollToBottom() {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  function handleSaveClick() {
+    if (!editor || !activeIdRef.current) return;
+    void persist(
+      activeIdRef.current,
+      editor.getJSON(),
+      editor.getText({ blockSeparator: "\n\n" })
+    );
+  }
+
+  function restore() {
+    if (!editor || !recovery) return;
+    editor.commands.setContent(textToDoc(recovery.text), false);
+    setDirty(true);
+    setRecovery(null);
+  }
+
+  function discardRecovery() {
+    if (activeIdRef.current) clearDraft(activeIdRef.current);
+    setRecovery(null);
+  }
+
+  async function readSSE(
+    res: Response,
+    onDelta: (text: string) => void,
+    onDone: (evt: Record<string, unknown>) => void
+  ) {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const line = part.replace(/^data: /, "").trim();
+        if (!line) continue;
+        let evt: Record<string, unknown>;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (evt.type === "delta" && typeof evt.text === "string") onDelta(evt.text);
+        else if (evt.type === "done") onDone(evt);
+        else if (evt.type === "error") setMessage(String(evt.message ?? "Falha."));
+      }
+    }
   }
 
   async function generate() {
@@ -78,7 +203,8 @@ export function WritingStudio({
     setMessage(null);
     setInsufficient(false);
     setActiveId(null);
-    editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] });
+    setRecovery(null);
+    editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] }, false);
 
     try {
       const res = await fetch("/api/generate", {
@@ -86,77 +212,103 @@ export function WritingStudio({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookId }),
       });
-
       if (res.status === 402) {
         setInsufficient(true);
-        setGenerating(false);
         return;
       }
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         setMessage(data.error ?? "Não foi possível gerar o capítulo.");
-        setGenerating(false);
         return;
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-        for (const part of parts) {
-          const line = part.replace(/^data: /, "").trim();
-          if (!line) continue;
-          let evt: {
-            type: string;
-            text?: string;
-            chapterId?: string;
-            index?: number;
-            title?: string;
-            balance?: number;
-            targetReached?: boolean;
-            message?: string;
+      await readSSE(
+        res,
+        (text) => {
+          fullText += text;
+          editor.commands.setContent(textToDoc(fullText), false);
+          scrollToBottom();
+        },
+        (evt) => {
+          const newChapter: Chapter = {
+            id: String(evt.chapterId),
+            index: Number(evt.index ?? chapters.length + 1),
+            title: String(evt.title ?? `Capítulo ${chapters.length + 1}`),
+            contentText: fullText,
           };
-          try {
-            evt = JSON.parse(line);
-          } catch {
-            continue;
-          }
-
-          if (evt.type === "delta" && evt.text) {
-            fullText += evt.text;
-            editor.commands.setContent(textToDoc(fullText), false);
-            scrollToBottom();
-          } else if (evt.type === "done") {
-            const newChapter: Chapter = {
-              id: evt.chapterId!,
-              index: evt.index ?? chapters.length + 1,
-              title: evt.title ?? `Capítulo ${chapters.length + 1}`,
-              contentText: fullText,
-            };
-            setChapters((prev) => [...prev, newChapter]);
-            setActiveId(newChapter.id);
-            if (typeof evt.balance === "number") setBalance(evt.balance);
-            if (evt.targetReached) {
-              setMessage("Meta de páginas atingida — hora de revisar.");
-            }
-          } else if (evt.type === "error") {
-            setMessage(evt.message ?? "Falha na geração.");
-          }
+          setChapters((prev) => [...prev, newChapter]);
+          setActiveId(newChapter.id);
+          if (typeof evt.balance === "number") setBalance(evt.balance);
+          if (evt.targetReached) setMessage("Meta de páginas atingida — hora de revisar.");
         }
-      }
+      );
     } catch {
       setMessage("Falha de conexão durante a geração.");
     } finally {
       setGenerating(false);
     }
   }
+
+  async function humanize() {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      setMessage("Selecione um trecho para humanizar.");
+      return;
+    }
+    const selected = editor.state.doc.textBetween(from, to, "\n");
+
+    setHumanizing(true);
+    setMessage(null);
+    setInsufficient(false);
+    try {
+      const res = await fetch("/api/humanize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: selected }),
+      });
+      if (res.status === 402) {
+        setInsufficient(true);
+        return;
+      }
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setMessage(data.error ?? "Não foi possível humanizar.");
+        return;
+      }
+
+      let first = true;
+      // Reabilita edição programática durante o stream.
+      editor.setEditable(true);
+      await readSSE(
+        res,
+        (text) => {
+          if (first) {
+            editor.chain().focus().deleteRange({ from, to }).run();
+            first = false;
+          }
+          editor.commands.insertContent(text);
+          scrollToBottom();
+        },
+        (evt) => {
+          if (typeof evt.balance === "number") setBalance(evt.balance);
+        }
+      );
+      // Persiste o resultado humanizado.
+      const id = activeIdRef.current;
+      if (id) {
+        setDirty(true);
+        void persist(id, editor.getJSON(), editor.getText({ blockSeparator: "\n\n" }));
+      }
+    } catch {
+      setMessage("Falha de conexão ao humanizar.");
+    } finally {
+      setHumanizing(false);
+    }
+  }
+
+  const busy = generating || humanizing;
 
   return (
     <div className="flex h-[calc(100vh-57px)]">
@@ -177,7 +329,7 @@ export function WritingStudio({
               key={c.id}
               type="button"
               onClick={() => setActiveId(c.id)}
-              disabled={generating}
+              disabled={busy}
               className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-sm ${
                 activeId === c.id
                   ? "bg-indigo-500/15 text-indigo-700"
@@ -196,34 +348,79 @@ export function WritingStudio({
 
       {/* Editor */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b px-6 py-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm">
-            <Coins className="size-4 text-amber-500" />
-            {balance.toLocaleString("pt-BR")}
-          </span>
-          <Button onClick={generate} disabled={generating}>
-            {generating ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
-            )}
-            {generating
-              ? "Escrevendo..."
-              : chapters.length === 0
-                ? "Gerar primeiro capítulo"
-                : "Gerar próximo capítulo"}
-          </Button>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1">
+              <Coins className="size-4 text-amber-500" />
+              {balance.toLocaleString("pt-BR")}
+            </span>
+            <span className="text-muted-foreground">
+              {saving
+                ? "Salvando…"
+                : dirty
+                  ? "Alterações não salvas"
+                  : lastSaved
+                    ? `Salvo ${new Date(lastSaved).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                    : ""}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={humanize}
+              disabled={busy || !activeId}
+              title="Selecione um trecho e clique para reescrever de forma mais humana"
+            >
+              {humanizing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wand2 className="size-4" />
+              )}
+              Humanizar seleção
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveClick}
+              disabled={busy || !activeId || saving}
+            >
+              <Save className="size-4" />
+              Salvar
+            </Button>
+            <Button onClick={generate} disabled={busy}>
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
+            </Button>
+          </div>
         </header>
+
+        {recovery && (
+          <div className="flex items-center gap-3 border-b bg-amber-50 px-6 py-2 text-sm text-amber-800">
+            <RotateCcw className="size-4 shrink-0" />
+            <span className="flex-1">
+              Há alterações não salvas de{" "}
+              {new Date(recovery.at).toLocaleString("pt-BR")}.
+            </span>
+            <button onClick={restore} className="font-medium underline underline-offset-2">
+              Restaurar
+            </button>
+            <button onClick={discardRecovery} className="text-amber-700/70 hover:text-amber-900">
+              Descartar
+            </button>
+          </div>
+        )}
 
         {(message || insufficient) && (
           <div className="border-b bg-secondary/50 px-6 py-2 text-sm">
             {insufficient ? (
               <span>
                 Créditos insuficientes.{" "}
-                <Link
-                  href="/dashboard/creditos"
-                  className="link-underline font-medium"
-                >
+                <Link href="/dashboard/creditos" className="link-underline font-medium">
                   Comprar créditos
                 </Link>
               </span>
@@ -236,7 +433,7 @@ export function WritingStudio({
         <div ref={scrollRef} className="flex-1 overflow-auto">
           <div className="mx-auto max-w-2xl px-6 py-10">
             <EditorContent editor={editor} />
-            {generating && (
+            {busy && (
               <span className="ml-0.5 inline-block h-5 w-[2px] animate-pulse bg-indigo-500 align-middle" />
             )}
           </div>

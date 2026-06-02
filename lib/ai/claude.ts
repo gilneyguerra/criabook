@@ -5,6 +5,8 @@ import {
   buildKeywordPrompt,
   buildChapterSystem,
   buildChapterPrompt,
+  HUMANIZER_SYSTEM,
+  buildHumanizePrompt,
 } from "@/lib/ai/prompts";
 
 export const MODEL_MAIN =
@@ -107,5 +109,21 @@ export function createChapterStream(params: {
         content: buildChapterPrompt(params.index, params.prevContext),
       },
     ],
+  });
+}
+
+/**
+ * Abre um stream que reescreve um trecho de forma mais humana (skill humanizer).
+ * Retorna o MessageStream do SDK, ou null sem API key.
+ */
+export function createHumanizeStream(params: { text: string }) {
+  const anthropic = getAnthropic();
+  if (!anthropic) return null;
+
+  return anthropic.messages.stream({
+    model: MODEL_MAIN,
+    max_tokens: 2000,
+    system: HUMANIZER_SYSTEM,
+    messages: [{ role: "user", content: buildHumanizePrompt(params.text) }],
   });
 }

@@ -1,4 +1,4 @@
-import { and, cosineDistance, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, cosineDistance, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { books, chapters, keywords } from "@/lib/db/schema";
@@ -106,6 +106,30 @@ export async function completeChapter(
       updatedAt: new Date(),
     })
     .where(eq(chapters.id, id));
+}
+
+export async function updateChapterContent(
+  chapterId: string,
+  userId: string,
+  data: { contentJson: unknown; contentText: string }
+) {
+  // Posse: só atualiza capítulos cujo livro pertence ao usuário.
+  const ownedBooks = db
+    .select({ id: books.id })
+    .from(books)
+    .where(eq(books.ownerId, userId));
+
+  const rows = await db
+    .update(chapters)
+    .set({
+      contentJson: data.contentJson,
+      contentText: data.contentText,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(chapters.id, chapterId), inArray(chapters.bookId, ownedBooks)))
+    .returning({ id: chapters.id });
+
+  return rows[0] ?? null;
 }
 
 export async function setBookStatus(

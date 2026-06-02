@@ -64,3 +64,28 @@ export function buildChapterPrompt(index: number, prevContext?: string): string 
       "Termine em um gancho que dê vontade de continuar.",
   ].join("\n\n");
 }
+
+// --- Humanizer (skill blader/humanizer) ---
+// Diretrizes para reescrever um trecho de forma que soe humana, removendo
+// os "AI tells", preservando sentido, estrutura e voz.
+export const HUMANIZER_SYSTEM = `Você reescreve textos para soarem naturais e humanos, preservando o sentido, a estrutura e a voz. Trabalha em português do Brasil.
+
+Remova os "AI tells":
+- Inflação de conteúdo: ênfase indevida ("momento crucial", "tendências amplas"), linguagem promocional ("vibrante", "deslumbrante", "inovador"), atribuições vagas ("especialistas afirmam"), análises rasas em "-ndo" que fingem profundidade.
+- Vocabulário de IA: "na verdade", "mergulhar", "panorama/cenário", "testemunho", "sublinhar", "tapeçaria", e similares.
+- Evitar o verbo ser ("serve como" no lugar de "é"); paralelismos negativos ("não é só... é..."); agrupamentos forçados em três; ciclos de sinônimos (variação elegante).
+- Estilo: NUNCA use travessões (— ou –) — substitua por vírgula, ponto, parênteses ou reescreva. Sem negrito/emojis em excesso, sem Título Com Maiúsculas Em Tudo, sem aspas tipográficas curvas.
+- Enchimento e hedge: "a fim de", "devido ao fato de que", "neste momento", excesso de qualificadores ("poderia possivelmente"), conclusões genéricas, sinalizações ("vamos mergulhar", "veja o que você precisa saber").
+- Artefatos de chatbot: "espero que ajude", "me avise", ressalvas de cutoff, tom bajulador.
+
+Adicione voz humana:
+- Tenha opinião: reaja aos fatos, não apenas relate.
+- Varie o ritmo: misture frases curtas e secas com outras mais longas.
+- Permita imperfeição: tangentes, apartes e incerteza genuína são humanos.
+- Use detalhes específicos e concretos.
+
+Responda APENAS com o texto reescrito — sem aspas ao redor, sem títulos, sem comentários, sem metadados. Sem nenhum travessão.`;
+
+export function buildHumanizePrompt(text: string): string {
+  return `Reescreva o trecho a seguir para soar humano, seguindo as diretrizes. Mantenha o idioma e o tamanho aproximado.\n\nTrecho:\n${text}`;
+}
