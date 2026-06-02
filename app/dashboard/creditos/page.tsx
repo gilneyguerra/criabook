@@ -55,7 +55,9 @@ export default async function CreditosPage({
         {CREDIT_PACKAGES.map((pkg) => (
           <Card
             key={pkg.id}
-            className={pkg.highlight ? "border-indigo-500/50 shadow-md" : ""}
+            className={`card-lift ${
+              pkg.highlight ? "border-indigo-500/50 shadow-md" : ""
+            }`}
           >
             <CardHeader>
               <CardTitle className="flex items-center justify-between">

@@ -83,3 +83,69 @@
     color: var(--foreground);
   }
 }
+
+/* ===== UI/UX polish ===== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background-color: oklch(0.55 0.18 277 / 0.25); /* índigo translúcido */
+}
+
+/* Cursor de pena: esconde o cursor nativo só em ponteiros finos (desktop),
+   mantendo o caret de texto nos campos editáveis. */
+@media (pointer: fine) {
+  html.cursor-quill,
+  html.cursor-quill * {
+    cursor: none;
+  }
+  html.cursor-quill input:not([type="checkbox"]):not([type="radio"]),
+  html.cursor-quill textarea,
+  html.cursor-quill select,
+  html.cursor-quill [contenteditable="true"] {
+    cursor: text;
+  }
+}
+
+/* Foco acessível em links (componentes shadcn já têm anel próprio). */
+a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Hover "lift" para cards clicáveis. */
+.card-lift {
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+.card-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.25);
+}
+
+/* Sublinhado animado para links de navegação. */
+.link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1.5px;
+  transition: background-size 200ms ease;
+}
+.link-underline:hover {
+  background-size: 100% 1.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .card-lift,
+  .link-underline {
+    transition: none;
+  }
+}

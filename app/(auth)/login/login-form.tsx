@@ -76,7 +76,7 @@ export function LoginForm() {
           </Button>
           <p className="text-sm text-muted-foreground">
             Não tem conta?{" "}
-            <Link href="/cadastro" className="underline underline-offset-4">
+            <Link href="/cadastro" className="link-underline font-medium">
               Criar conta
             </Link>
           </p>

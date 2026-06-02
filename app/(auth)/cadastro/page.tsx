@@ -90,7 +90,7 @@ export default function CadastroPage() {
           </Button>
           <p className="text-sm text-muted-foreground">
             Já tem conta?{" "}
-            <Link href="/login" className="underline underline-offset-4">
+            <Link href="/login" className="link-underline font-medium">
               Entrar
             </Link>
           </p>

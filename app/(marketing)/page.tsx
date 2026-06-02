@@ -108,7 +108,7 @@ export default function LandingPage() {
           {features.map(({ icon: Icon, title, desc }) => (
             <div
               key={title}
-              className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-6 transition-colors hover:border-indigo-500/40"
+              className="card-lift flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-6 hover:border-indigo-500/40"
             >
               <div className="flex size-10 items-center justify-center rounded-lg bg-indigo-500/15">
                 <Icon className="size-5 text-indigo-400" />
