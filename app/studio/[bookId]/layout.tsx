@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getStudioProgress } from "@/lib/studio/progress";
 import { StudioNav } from "./_components/studio-nav";
+import { CopyGuard } from "./_components/copy-guard";
 
 export default async function StudioLayout({
   children,
@@ -23,6 +24,7 @@ export default async function StudioLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <CopyGuard />
       <header className="flex items-center gap-3 border-b px-4 py-2.5">
         <Link
           href="/dashboard"
