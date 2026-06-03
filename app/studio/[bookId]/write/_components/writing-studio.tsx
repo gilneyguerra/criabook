@@ -15,7 +15,6 @@ import {
   Save,
   RotateCcw,
   PenLine,
-  History,
   ArrowRight,
   ImageIcon,
   Eraser,
@@ -28,7 +27,7 @@ import {
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
 import { paginateBook, totalBodyPages } from "@/lib/pagination";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
-import { saveChapter, snapshotChapter, normalizeChapter } from "../actions";
+import { saveChapter, normalizeChapter } from "../actions";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -260,19 +259,6 @@ export function WritingStudio({
     );
   }
 
-  async function handleSnapshot() {
-    if (!editor || !activeIdRef.current) return;
-    setSaving(true);
-    await snapshotChapter(bookId, activeIdRef.current, {
-      contentJson: editor.getJSON(),
-      contentText: docToText(editor.getJSON()),
-    });
-    setSaving(false);
-    setDirty(false);
-    setLastSaved(Date.now());
-    if (activeIdRef.current) clearDraft(activeIdRef.current);
-  }
-
   function restore() {
     if (!editor || !recovery) return;
     editor.commands.setContent(textToDoc(recovery.text), false);
@@ -473,7 +459,8 @@ export function WritingStudio({
             first = false;
           }
           editor.commands.insertContent(text);
-          scrollToBottom();
+          // Acompanha o trecho sendo reescrito (NÃO rola pro fim do documento).
+          editor.commands.scrollIntoView();
         },
         (evt) => {
           // Substitui o trecho cru pelo texto normalizado (tipografia PT-BR).
@@ -487,14 +474,17 @@ export function WritingStudio({
               .run();
           }
           if (typeof evt.balance === "number") setBalance(evt.balance);
-          // Realça as palavras alteradas com fade lento (~2,8s), depois remove.
+          // Realça as palavras alteradas com fade lento, depois remove.
+          // Mantém a tela SOBRE o trecho humanizado (rola o início da mudança
+          // para a vista), em vez de pular para o fim do documento.
           const hlTo = editor.state.selection.from;
           if (hlTo > insertedFrom) {
             editor
               .chain()
               .setTextSelection({ from: insertedFrom, to: hlTo })
               .setHighlight()
-              .setTextSelection(hlTo)
+              .setTextSelection(insertedFrom)
+              .scrollIntoView()
               .run();
             const lo = insertedFrom;
             const hi = hlTo;
@@ -506,7 +496,7 @@ export function WritingStudio({
                 .unsetHighlight()
                 .setTextSelection(hi)
                 .run();
-            }, 2900);
+            }, 3600);
           }
         }
       );
@@ -741,10 +731,10 @@ export function WritingStudio({
               size="sm"
               onClick={continueChapter}
               disabled={busy || !activeId}
-              title="Continua o capítulo aberto a partir de onde parou"
+              title="Continua o capítulo aberto a partir de onde parou, dando sequência lógica ao contexto anterior"
             >
               <PenLine className="size-4" />
-              Continuar
+              Continuar geração
             </Button>
             <Button
               variant="ghost"
@@ -776,7 +766,7 @@ export function WritingStudio({
               ) : (
                 <Wand2 className="size-4" />
               )}
-              Humanizar
+              Humanizar Seleção
             </Button>
             <Button
               variant="outline"
@@ -795,36 +785,28 @@ export function WritingStudio({
 
             <span className="mx-1 h-5 w-px shrink-0 bg-border" />
 
-            {/* Salvar */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveClick}
-              disabled={busy || !activeId || saving}
-              title="Salvar o capítulo agora"
-            >
-              <Save className="size-4" />
-              Salvar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSnapshot}
-              disabled={busy || !activeId || saving}
-              title="Salva um ponto de versão restaurável"
-            >
-              <History className="size-4" />
-              Versão
-            </Button>
-
-            <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-
             {/* Avançar */}
             <Button asChild variant="ghost" size="sm">
               <Link href={`/studio/${bookId}/check`} title="Ir para a Revisão de consistência">
                 Próximo: Revisão
                 <ArrowRight className="size-4" />
               </Link>
+            </Button>
+
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" />
+
+            {/* Salvar — fixado no canto superior direito */}
+            <Button
+              onClick={handleSaveClick}
+              disabled={busy || !activeId || saving}
+              title="Salvar o capítulo agora (o histórico de versões fica na aba Versões)"
+            >
+              {saving ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Salvar
             </Button>
           </div>
         </header>

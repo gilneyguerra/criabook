@@ -102,7 +102,7 @@ html {
 .ProseMirror mark {
   background-color: transparent;
   border-radius: 2px;
-  animation: cb-humanize-fade 2.8s ease-out forwards;
+  animation: cb-humanize-fade 3.4s ease-out forwards;
 }
 
 /* Cursor de pena: esconde o cursor nativo só em ponteiros finos (desktop),
