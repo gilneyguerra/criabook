@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
+import { stripMarkers } from "@/lib/text/markers";
 import { paginateBook, totalBodyPages, type ChapterPage } from "@/lib/pagination";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
 import {
@@ -192,11 +193,21 @@ export function WritingStudio({
     if (!editor || generating || humanizing || !activeId) return;
     const ch = chaptersRef.current.find((c) => c.id === activeId);
     if (!ch) return;
-    editor.commands.setContent(textToDoc(ch.contentText), false);
+    // Rede de segurança: remove marcadores internos ([NOVO_FATO]/[LACUNA]) que
+    // possam ter vazado (ex.: geração interrompida) e re-salva o capítulo limpo.
+    const raw = ch.contentText ?? "";
+    const cleaned = stripMarkers(raw).clean;
+    editor.commands.setContent(textToDoc(cleaned), false);
     setDirty(false);
+    if (cleaned !== raw) {
+      setChapters((prev) =>
+        prev.map((c) => (c.id === activeId ? { ...c, contentText: cleaned } : c))
+      );
+      void persist(activeId, textToDoc(cleaned), cleaned);
+    }
 
     const draft = loadDraft(activeId);
-    if (draft && draft.text.trim() && draft.text !== ch.contentText) {
+    if (draft && draft.text.trim() && stripMarkers(draft.text).clean !== cleaned) {
       setRecovery(draft);
     } else {
       setRecovery(null);
@@ -461,10 +472,10 @@ export function WritingStudio({
         res,
         (text) => {
           added += text;
-          editor.commands.setContent(
-            textToDoc((baseText ? baseText + "\n\n" : "") + added),
-            false
-          );
+          // Remove marcadores internos ([NOVO_FATO]/[LACUNA]) já completos para
+          // que nunca apareçam ao usuário durante a digitação.
+          const combined = (baseText ? baseText + "\n\n" : "") + added;
+          editor.commands.setContent(textToDoc(stripMarkers(combined).clean), false);
           scrollToBottom();
         },
         (evt) => {
@@ -486,11 +497,28 @@ export function WritingStudio({
         clearDraft(id);
       } else if (added.trim()) {
         // Fallback: salva pelo cliente caso o servidor não tenha persistido.
-        const finalText = (baseText ? baseText + "\n\n" : "") + added;
-        void persist(id, editor.getJSON(), finalText);
+        // Limpa marcadores internos antes de exibir/persistir.
+        const finalText = stripMarkers((baseText ? baseText + "\n\n" : "") + added).clean;
+        editor.commands.setContent(textToDoc(finalText), false);
+        void persist(id, textToDoc(finalText), finalText);
       }
     } catch {
       setMessage("Falha de conexão durante a geração.");
+      // Geração interrompida: limpa marcadores que possam ter vazado no stream.
+      if (editor) {
+        const cur = docToText(editor.getJSON());
+        const cleaned = stripMarkers(cur).clean;
+        if (cleaned !== cur) {
+          editor.commands.setContent(textToDoc(cleaned), false);
+          const cid = activeIdRef.current;
+          if (cid) {
+            setChapters((prev) =>
+              prev.map((c) => (c.id === cid ? { ...c, contentText: cleaned } : c))
+            );
+            void persist(cid, textToDoc(cleaned), cleaned);
+          }
+        }
+      }
     } finally {
       setGenerating(false);
     }

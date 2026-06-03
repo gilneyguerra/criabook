@@ -24,36 +24,9 @@ import {
   saveWorldStateSnapshot,
 } from "@/lib/memory/state";
 
-/**
- * Remove os marcadores do texto e captura seu conteúdo.
- * - [NOVO_FATO: x] → registra x no cânone; some da prosa.
- * - [LACUNA: x] → vira issue soft (pendência ao autor); some da prosa.
- */
-export function stripMarkers(text: string): {
-  clean: string;
-  novoFatos: string[];
-  lacunas: string[];
-} {
-  const novoFatos: string[] = [];
-  const lacunas: string[] = [];
-
-  let clean = text.replace(/\[NOVO_FATO:\s*([^\]]+)\]/gi, (_m, g1) => {
-    novoFatos.push(String(g1).trim());
-    return "";
-  });
-  clean = clean.replace(/\[LACUNA:\s*([^\]]+)\]/gi, (_m, g1) => {
-    lacunas.push(String(g1).trim());
-    return "";
-  });
-  // Limpa espaços/linhas órfãs deixadas pela remoção.
-  clean = clean
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/ +\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return { clean, novoFatos, lacunas };
-}
+// stripMarkers vive em lib/text/markers (puro, client-safe). Re-exportado aqui
+// para compatibilidade com quem já importa de @/lib/generate/extract (a rota).
+export { stripMarkers } from "@/lib/text/markers";
 
 /**
  * Persiste o estado extraído do capítulo `index`. `cleanText` já está
