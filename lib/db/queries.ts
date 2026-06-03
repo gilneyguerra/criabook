@@ -14,6 +14,7 @@ import {
   storyBeats,
   versions,
   chapterImages,
+  covers,
 } from "@/lib/db/schema";
 import { embedText } from "@/lib/ai/embeddings";
 import type { KeywordCategoryKey } from "@/lib/keywords";
@@ -32,8 +33,16 @@ const SEMANTIC_DEDUP_THRESHOLD = 0.12;
 
 export async function getUserBooks(userId: string) {
   return db
-    .select()
+    .select({
+      id: books.id,
+      title: books.title,
+      genre: books.genre,
+      status: books.status,
+      updatedAt: books.updatedAt,
+      coverUrl: covers.ebookCoverUrl,
+    })
     .from(books)
+    .leftJoin(covers, eq(covers.bookId, books.id))
     .where(eq(books.ownerId, userId))
     .orderBy(desc(books.updatedAt));
 }
@@ -213,6 +222,35 @@ export async function saveBookMatter(bookId: string, matter: unknown) {
     .insert(bookMeta)
     .values({ bookId, matter })
     .onConflictDoUpdate({ target: bookMeta.bookId, set: { matter } });
+}
+
+/* ----------------------- Capa (FERRAMENTA_CAPA) ----------------------- */
+
+export type CoverData = typeof covers.$inferInsert;
+
+export async function getCover(bookId: string) {
+  const rows = await db
+    .select()
+    .from(covers)
+    .where(eq(covers.bookId, bookId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Cria/atualiza a capa do livro (1:1). `data` traz só os campos a mudar. */
+export async function upsertCover(
+  bookId: string,
+  data: Partial<Omit<CoverData, "id" | "bookId">>
+) {
+  const rows = await db
+    .insert(covers)
+    .values({ bookId, ...data })
+    .onConflictDoUpdate({
+      target: covers.bookId,
+      set: { ...data, updatedAt: new Date() },
+    })
+    .returning();
+  return rows[0];
 }
 
 /* ----------------------- Bíblia da História (Fase A) ----------------------- */

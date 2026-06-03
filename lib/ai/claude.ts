@@ -624,6 +624,97 @@ export async function suggestField(
   }
 }
 
+/* ------------------- Textos comerciais da capa (FERRAMENTA_CAPA) ------------------- */
+
+const COVER_COPY_SYSTEM: Record<"back" | "flapFront" | "bio", string> = {
+  back:
+    "Escreva o TEXTO DE APRESENTAÇÃO DA 4ª CAPA. NÃO é sinopse: é peça comercial. " +
+    "3ª pessoa, foco no benefício/transformação que a obra entrega ao leitor. " +
+    "3 a 5 parágrafos curtos e persuasivos. pt-BR. Responda só o texto.",
+  flapFront:
+    "Escreva a ORELHA DA CAPA: abordagem editorial (como a obra se organiza/o que " +
+    "aborda) OU uma frase de impacto seguida de um breve gancho. Comercial, pt-BR. " +
+    "Responda só o texto.",
+  bio:
+    "Escreva uma BIOGRAFIA do autor em 3ª pessoa, focada na autoridade/experiência " +
+    "no tema da obra. 2 a 3 frases. pt-BR. Se houver uma bio anterior no contexto, " +
+    "refine-a mantendo os fatos. Responda só o texto.",
+};
+
+/** Gera um texto comercial da capa (4ª capa, orelha ou bio). "" sem API key. */
+export async function generateCoverText(
+  kind: "back" | "flapFront" | "bio",
+  bookContext: string
+): Promise<string> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return "";
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_MAIN,
+      max_tokens: 1000,
+      system: COVER_COPY_SYSTEM[kind],
+      messages: [{ role: "user", content: bookContext }],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+const SOCIAL_TOOL: Anthropic.Tool = {
+  name: "prova_social",
+  description: "Rascunhos de depoimentos curtos (prova social) para a 4ª capa.",
+  input_schema: {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            quote: { type: "string", description: "2 a 3 linhas" },
+            author: { type: "string", description: "papel/veículo, ex.: 'Crítico literário'" },
+          },
+          required: ["quote", "author"],
+        },
+      },
+    },
+    required: ["items"],
+  },
+};
+
+/** Rascunha 1–2 depoimentos (o autor edita/substitui). [] sem API key. */
+export async function generateSocialProof(
+  bookContext: string
+): Promise<{ quote: string; author: string }[]> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return [];
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 600,
+      system:
+        "Rascunhe 1 a 2 depoimentos curtos de prova social para a 4ª capa, no tom " +
+        "do livro. São RASCUNHOS a confirmar pelo autor (não atribua a pessoas reais). " +
+        "pt-BR.",
+      messages: [{ role: "user", content: bookContext }],
+      tools: [SOCIAL_TOOL],
+      tool_choice: { type: "tool", name: SOCIAL_TOOL.name },
+    });
+    const block = res.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") return [];
+    const inp = block.input as { items?: { quote?: string; author?: string }[] };
+    if (!Array.isArray(inp.items)) return [];
+    return inp.items.map((i) => ({
+      quote: String(i.quote ?? ""),
+      author: String(i.author ?? ""),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
 export function friendlyAiError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();

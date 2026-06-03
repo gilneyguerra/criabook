@@ -10,16 +10,25 @@ import {
   getStoryBeats,
   getChapters,
   getBookMeta,
+  getCover,
 } from "@/lib/db/queries";
 import { getIssues } from "@/lib/memory/ledgers";
 import type { Matter } from "@/lib/matter";
 
-export type StepKey = "base" | "map" | "write" | "review" | "pages" | "export";
+export type StepKey =
+  | "base"
+  | "cover"
+  | "map"
+  | "write"
+  | "review"
+  | "pages"
+  | "export";
 
 export type StudioProgress = Record<StepKey, boolean>;
 
 const EMPTY: StudioProgress = {
   base: false,
+  cover: false,
   map: false,
   write: false,
   review: false,
@@ -34,12 +43,13 @@ export async function getStudioProgress(
   const book = await getBookForUser(bookId, userId).catch(() => null);
   if (!book) return EMPTY;
 
-  const [bible, beats, chapters, meta, issues] = await Promise.all([
+  const [bible, beats, chapters, meta, issues, cover] = await Promise.all([
     getBible(bookId).catch(() => null),
     getStoryBeats(bookId).catch(() => []),
     getChapters(bookId).catch(() => []),
     getBookMeta(bookId).catch(() => null),
     getIssues(bookId).catch(() => []),
+    getCover(bookId).catch(() => null),
   ]);
 
   const hasBase =
@@ -56,6 +66,8 @@ export async function getStudioProgress(
 
   return {
     base: hasBase && hasChar,
+    // Rascunho mínimo de capa: arte + título.
+    cover: Boolean(cover?.frontArtUrl && cover?.title?.trim()),
     map: hasBeats,
     write: hasChapter,
     // Revisão "ok": há capítulos e nenhuma contradição hard aberta.

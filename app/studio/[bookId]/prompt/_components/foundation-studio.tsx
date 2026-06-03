@@ -107,7 +107,7 @@ export function FoundationStudio({
       </div>
 
       <div className="mt-8 flex justify-end border-t pt-6">
-        <NextStep bookId={bookId} seg="roadmap" label="Mapa" />
+        <NextStep bookId={bookId} seg="cover" label="Capa" />
       </div>
     </div>
   );

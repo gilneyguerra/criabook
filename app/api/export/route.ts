@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 
 import { auth } from "@/lib/auth";
-import { getBookForUser, getChapters, getBookMeta } from "@/lib/db/queries";
+import { getBookForUser, getChapters, getBookMeta, getCover } from "@/lib/db/queries";
 import { buildEpub } from "@/lib/export/epub";
 import type { Matter } from "@/lib/matter";
 import { getLayoutProfile } from "@/lib/layout/profile";
@@ -33,13 +33,15 @@ export async function GET(request: Request) {
   const meta = await getBookMeta(bookId).catch(() => null);
   const matter = (meta?.matter ?? {}) as Matter;
   const profile = getLayoutProfile(book.layoutProfileId, book.type);
+  const cover = await getCover(bookId).catch(() => null);
 
   const buffer = await buildEpub(
     book,
     chapters,
     matter,
     new Date().getFullYear(),
-    profile
+    profile,
+    cover?.ebookCoverUrl ?? null
   );
   const filename =
     (book.title ?? "livro").replace(/[^\w\-]+/g, "_").slice(0, 60) + ".epub";

@@ -17,7 +17,8 @@ export async function buildEpub(
   chapters: { index: number; title: string | null; contentText: string | null }[],
   matter: Matter,
   year: number,
-  profile: BookLayoutProfile
+  profile: BookLayoutProfile,
+  coverUrl?: string | null
 ): Promise<Buffer> {
   const author = matter.authorName?.trim() || "Autor";
   const { front, back } = assembleMatter({ title: book.title }, chapters, matter, year);
@@ -45,6 +46,7 @@ export async function buildEpub(
       lang: profile.text.locale,
       tocTitle: "Sumário",
       css: epubCss(profile),
+      ...(coverUrl ? { cover: coverUrl } : {}),
       // Nosso render semântico já emite o <h1> do capítulo; evita título duplo.
       prependChapterTitles: false,
     },

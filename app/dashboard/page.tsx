@@ -73,7 +73,19 @@ export default async function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {books.map((book) => (
             <Link key={book.id} href={`/studio/${book.id}/write`}>
-              <Card className="card-lift h-full hover:border-indigo-500/40">
+              <Card className="card-lift h-full overflow-hidden hover:border-indigo-500/40">
+                <div className="flex aspect-[5/7] max-h-44 items-center justify-center overflow-hidden bg-secondary/40">
+                  {book.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={book.coverUrl}
+                      alt={`Capa de ${book.title ?? "livro"}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <BookPlus className="size-8 text-muted-foreground/40" />
+                  )}
+                </div>
                 <CardHeader>
                   <CardTitle>{book.title ?? "Sem título"}</CardTitle>
                   <CardDescription>

@@ -8,11 +8,12 @@ import type { StudioProgress, StepKey } from "@/lib/studio/progress";
 
 const STEPS: { key: StepKey; n: number; label: string; seg: string }[] = [
   { key: "base", n: 1, label: "Base & Bíblia", seg: "prompt" },
-  { key: "map", n: 2, label: "Mapa", seg: "roadmap" },
-  { key: "write", n: 3, label: "Escrita", seg: "write" },
-  { key: "review", n: 4, label: "Revisão", seg: "check" },
-  { key: "pages", n: 5, label: "Páginas", seg: "matter" },
-  { key: "export", n: 6, label: "Exportar", seg: "export" },
+  { key: "cover", n: 2, label: "Capa", seg: "cover" },
+  { key: "map", n: 3, label: "Mapa", seg: "roadmap" },
+  { key: "write", n: 4, label: "Escrita", seg: "write" },
+  { key: "review", n: 5, label: "Revisão", seg: "check" },
+  { key: "pages", n: 6, label: "Páginas", seg: "matter" },
+  { key: "export", n: 7, label: "Exportar", seg: "export" },
 ];
 
 export function StudioNav({

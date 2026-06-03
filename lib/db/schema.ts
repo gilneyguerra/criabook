@@ -409,6 +409,49 @@ export const consistencyIssues = pgTable(
 );
 
 /* ============================================================
+ * Capa (FERRAMENTA_CAPA) — designer em 3 camadas, 1:1 com o livro.
+ * A IA gera só a ARTE; todo texto é camada editável.
+ * ============================================================ */
+
+export const covers = pgTable("covers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  bookId: uuid("book_id")
+    .notNull()
+    .unique()
+    .references(() => books.id, { onDelete: "cascade" }),
+  // Camada 1 — arte
+  frontArtUrl: text("front_art_url"),
+  backArtUrl: text("back_art_url"),
+  artPrompt: text("art_prompt"),
+  style: text("style"),
+  palette: jsonb("palette"), // { background, accent, ... }
+  // Camada 2 — tipografia (capa frontal + lombada)
+  title: text("title"),
+  subtitle: text("subtitle"),
+  authorName: text("author_name"),
+  highlight: text("highlight"),
+  spineText: text("spine_text"),
+  fontDisplay: text("font_display"),
+  fontText: text("font_text"),
+  layout: jsonb("layout"), // posições/cores/tamanhos dos textos
+  // Camada 3 — textos longos
+  backText: text("back_text"),
+  socialProof: jsonb("social_proof"), // [{ quote, author }]
+  flapFront: text("flap_front"),
+  flapBio: text("flap_bio"),
+  authorPhotoUrl: text("author_photo_url"),
+  // Formato / acabamento
+  target: text("target").notNull().default("ebook"), // ebook | print
+  binding: text("binding"), // brochura | brochura_orelhas | capa_dura | kdp_brochura
+  hasFlaps: boolean("has_flaps").notNull().default(false),
+  spineWidthMm: numeric("spine_width_mm"),
+  // Saídas
+  ebookCoverUrl: text("ebook_cover_url"), // 2500x3500 JPG composto
+  printWrapUrl: text("print_wrap_url"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/* ============================================================
  * RAG — chunks indexados (capítulos + Bíblia) p/ recuperação
  * ============================================================ */
 
