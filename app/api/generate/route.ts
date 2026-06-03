@@ -34,9 +34,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const { bookId, mode, context, index: reqIndex } = await request
-    .json()
-    .catch(() => ({}));
+  const {
+    bookId,
+    mode,
+    context,
+    index: reqIndex,
+    chapterId: reqChapterId,
+    fullText: reqFullText,
+  } = await request.json().catch(() => ({}));
   const book = await getBookForUser(String(bookId), session.user.id).catch(
     () => null
   );
@@ -102,12 +107,26 @@ export async function POST(request: Request) {
       );
     }
 
+    // Capítulo-alvo (para persistir/alimentar o motor de consistência).
+    const targetChapter =
+      typeof reqChapterId === "string"
+        ? existingForCtx.find((c) => c.id === reqChapterId)
+        : existingForCtx.find((c) => c.index === curIndex);
+    const baseFull =
+      typeof reqFullText === "string" && reqFullText.trim()
+        ? reqFullText.trim()
+        : (targetChapter?.contentText ?? "");
+
     const body = new ReadableStream({
       async start(controller) {
         const send = (obj: unknown) =>
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+        let added = "";
         try {
-          stream.on("text", (delta: string) => send({ type: "delta", text: delta }));
+          stream.on("text", (delta: string) => {
+            added += delta;
+            send({ type: "delta", text: delta });
+          });
           const finalMsg = await stream.finalMessage();
           const credits = creditsForUsage({
             tokensIn: finalMsg.usage.input_tokens,
@@ -116,7 +135,74 @@ export async function POST(request: Request) {
           try {
             await debitCredits(userId, credits, "continuar capítulo");
           } catch {}
-          send({ type: "done", debited: credits, balance: balance - credits });
+
+          // Concatena ao conteúdo anterior e alimenta o motor de consistência
+          // (mesmo pipeline da geração completa), se houver capítulo-alvo.
+          let normalized: string | null = null;
+          if (targetChapter && added.trim()) {
+            const complete = baseFull ? `${baseFull}\n\n${added}` : added;
+            const { clean, novoFatos, lacunas } = stripMarkers(complete);
+            normalized = normalize(clean, profile);
+            const summary = await summarizeChapter(normalized);
+            await completeChapter(targetChapter.id, {
+              contentJson: textToDoc(normalized),
+              contentText: normalized,
+              tokensUsed: finalMsg.usage.output_tokens,
+              summary,
+            });
+            try {
+              await indexChapter(bookId, targetChapter.id, normalized);
+            } catch {}
+            try {
+              await createVersion(
+                bookId,
+                targetChapter.id,
+                `Continuação: ${targetChapter.title ?? `Capítulo ${curIndex}`}`,
+                { contentText: normalized, contentJson: textToDoc(normalized) }
+              );
+            } catch {}
+            try {
+              await persistExtraction({
+                bookId,
+                index: curIndex,
+                cleanText: normalized,
+                bookContext: briefText,
+                novoFatos,
+                lacunas,
+                chapterSummary: summary,
+              });
+            } catch {}
+          }
+
+          // Meta de páginas (considera o capítulo recém-atualizado).
+          const target = (book.pageTarget ?? 0) * 280;
+          const totalWords = existingForCtx.reduce(
+            (acc, c) =>
+              acc +
+              wordCount(
+                c.id === targetChapter?.id && normalized
+                  ? normalized
+                  : c.contentText ?? ""
+              ),
+            0
+          );
+          const targetReached = target > 0 && totalWords >= target;
+          if (targetReached) {
+            try {
+              await setBookStatus(bookId, userId, "review");
+            } catch {}
+          }
+
+          send({
+            type: "done",
+            debited: credits,
+            balance: balance - credits,
+            chapterId: targetChapter?.id,
+            contentText: normalized ?? undefined,
+            totalWords,
+            target,
+            targetReached,
+          });
           controller.close();
         } catch (err) {
           console.error("continue error", err);

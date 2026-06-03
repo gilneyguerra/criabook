@@ -355,13 +355,29 @@ export async function getChapters(bookId: string) {
 export async function createChapter(
   bookId: string,
   index: number,
-  title: string
+  title: string,
+  status: "pending" | "generating" | "review" | "done" = "generating"
 ) {
   const rows = await db
     .insert(chapters)
-    .values({ bookId, index, title, status: "generating" })
+    .values({ bookId, index, title, status })
     .returning();
   return rows[0];
+}
+
+/** Apaga um capítulo (e em cascata versões/ragChunks/imagens). Posse verificada. */
+export async function deleteChapter(chapterId: string, userId: string) {
+  const ownedBooks = db
+    .select({ id: books.id })
+    .from(books)
+    .where(eq(books.ownerId, userId));
+
+  const rows = await db
+    .delete(chapters)
+    .where(and(eq(chapters.id, chapterId), inArray(chapters.bookId, ownedBooks)))
+    .returning({ id: chapters.id });
+
+  return rows[0] ?? null;
 }
 
 export async function completeChapter(

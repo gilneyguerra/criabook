@@ -14,7 +14,6 @@ import {
   Wand2,
   Save,
   RotateCcw,
-  PenLine,
   ArrowRight,
   ImageIcon,
   Eraser,
@@ -22,12 +21,19 @@ import {
   ChevronDown,
   FileText,
   Check,
+  Trash2,
+  Plus,
 } from "lucide-react";
 
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
-import { paginateBook, totalBodyPages } from "@/lib/pagination";
+import { paginateBook, totalBodyPages, type ChapterPage } from "@/lib/pagination";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
-import { saveChapter, normalizeChapter } from "../actions";
+import {
+  saveChapter,
+  normalizeChapter,
+  createEmptyChapter,
+  deleteChapter,
+} from "../actions";
 import { Button } from "@/components/ui/button";
 
 type Chapter = {
@@ -36,6 +42,36 @@ type Chapter = {
   title: string;
   contentText: string;
 };
+
+/**
+ * Remove os parágrafos que compõem a "linha" (página) `i` de um capítulo.
+ * As quebras de página caem em fronteiras de parágrafo, então a contagem de
+ * palavras aqui espelha exatamente a de `splitChapter` (paginação).
+ */
+function removePageParagraphs(
+  text: string,
+  pages: ChapterPage[],
+  i: number
+): string {
+  const wordStart = pages[i]?.wordStart ?? 0;
+  const wordEnd = i + 1 < pages.length ? pages[i + 1].wordStart : Infinity;
+  const paras = (text ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  let cum = 0;
+  const kept: string[] = [];
+  for (const para of paras) {
+    const w = para.split(/\s+/).length;
+    const cumBefore = cum;
+    cum += w;
+    if (cumBefore >= wordStart && cumBefore < wordEnd) continue; // pertence à página → remove
+    kept.push(para);
+  }
+  return kept.join("\n\n").trim();
+}
 
 export function WritingStudio({
   bookId,
@@ -84,6 +120,7 @@ export function WritingStudio({
   const [recovery, setRecovery] = useState<Draft | null>(null);
   const [illustrating, setIllustrating] = useState(false);
   const [normalizingDoc, setNormalizingDoc] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<string | null>(activeId);
@@ -200,6 +237,85 @@ export function WritingStudio({
     }, 60);
   }
 
+  // Cria um capítulo VAZIO (sem geração por IA). O conteúdo é escrito à mão ou
+  // gerado depois com "Continuar geração".
+  async function createNewChapter() {
+    if (busy || creating) return;
+    setCreating(true);
+    setMessage(null);
+    setInsufficient(false);
+    try {
+      const res = await createEmptyChapter(bookId);
+      if (res && "error" in res && res.error) {
+        setMessage(res.error);
+        return;
+      }
+      if (res && "ok" in res && res.ok && res.chapter) {
+        const ch = res.chapter as Chapter;
+        setChapters((prev) => [...prev, ch]);
+        setActiveId(ch.id);
+        setExpandedId(ch.id);
+        setRecovery(null);
+        editor?.commands.setContent(
+          { type: "doc", content: [{ type: "paragraph" }] },
+          false
+        );
+        setDirty(false);
+      }
+    } catch {
+      setMessage("Falha ao criar o capítulo.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // Apaga o capítulo inteiro (todo o conteúdo é perdido), com confirmação.
+  async function removeChapter(chapterId: string) {
+    if (busy) return;
+    if (!window.confirm("Você tem certeza de que deseja deletar esse capítulo?"))
+      return;
+    const res = await deleteChapter(bookId, chapterId);
+    if (res && "error" in res && res.error) {
+      setMessage(res.error);
+      return;
+    }
+    clearDraft(chapterId);
+    const remaining = chaptersRef.current.filter((c) => c.id !== chapterId);
+    setChapters(remaining);
+    if (activeIdRef.current === chapterId) {
+      const next = remaining[0]?.id ?? null;
+      setActiveId(next);
+      if (!next) {
+        editor?.commands.setContent(
+          { type: "doc", content: [{ type: "paragraph" }] },
+          false
+        );
+      }
+    }
+  }
+
+  // Apaga uma "linha" (página) do capítulo: remove os parágrafos dela e
+  // dispara o auto-save (persiste o capítulo modificado).
+  function removePage(chapterId: string, pageIndex: number) {
+    if (busy || !editor) return;
+    if (!window.confirm("Você tem certeza de que quer deletar essa linha?"))
+      return;
+    const ch = chaptersRef.current.find((c) => c.id === chapterId);
+    if (!ch) return;
+    const pages = pagination[chapterId]?.pages ?? [];
+    const newText = removePageParagraphs(ch.contentText, pages, pageIndex);
+
+    setChapters((prev) =>
+      prev.map((c) => (c.id === chapterId ? { ...c, contentText: newText } : c))
+    );
+    if (chapterId === activeIdRef.current) {
+      editor.commands.setContent(textToDoc(newText), false);
+    }
+    setDirty(true);
+    // Auto-save imediato das modificações.
+    void persist(chapterId, textToDoc(newText), newText);
+  }
+
   // Estrutura editorial: pré-textuais (antes) e pós-textuais (depois).
   type MItem = { label: string; seg?: string; filled: boolean; auto?: boolean };
   const frontMatter: MItem[] = [
@@ -301,65 +417,6 @@ export function WritingStudio({
     }
   }
 
-  async function generate() {
-    if (!editor) return;
-    setGenerating(true);
-    setMessage(null);
-    setInsufficient(false);
-    setActiveId(null);
-    setRecovery(null);
-    editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] }, false);
-
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId }),
-      });
-      if (res.status === 402) {
-        setInsufficient(true);
-        return;
-      }
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        setMessage(data.error ?? "Não foi possível gerar o capítulo.");
-        return;
-      }
-
-      let fullText = "";
-      await readSSE(
-        res,
-        (text) => {
-          fullText += text;
-          editor.commands.setContent(textToDoc(fullText), false);
-          scrollToBottom();
-        },
-        (evt) => {
-          // O servidor salva o texto NORMALIZADO; sincroniza o editor/estado.
-          const finalText =
-            typeof evt.contentText === "string" ? evt.contentText : fullText;
-          if (typeof evt.contentText === "string") {
-            editor.commands.setContent(textToDoc(finalText), false);
-          }
-          const newChapter: Chapter = {
-            id: String(evt.chapterId),
-            index: Number(evt.index ?? chapters.length + 1),
-            title: String(evt.title ?? `Capítulo ${chapters.length + 1}`),
-            contentText: finalText,
-          };
-          setChapters((prev) => [...prev, newChapter]);
-          setActiveId(newChapter.id);
-          if (typeof evt.balance === "number") setBalance(evt.balance);
-          if (evt.targetReached) setMessage("Meta de páginas atingida — hora de revisar.");
-        }
-      );
-    } catch {
-      setMessage("Falha de conexão durante a geração.");
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   async function continueChapter() {
     if (!editor) return;
     const id = activeIdRef.current;
@@ -381,6 +438,8 @@ export function WritingStudio({
         body: JSON.stringify({
           bookId,
           mode: "continue",
+          chapterId: id,
+          fullText: baseText,
           context: baseText.slice(-3000),
           index: activeIndex,
         }),
@@ -396,19 +455,37 @@ export function WritingStudio({
       }
 
       let added = "";
+      let serverText: string | null = null;
       await readSSE(
         res,
         (text) => {
           added += text;
-          editor.commands.setContent(textToDoc(baseText + "\n\n" + added), false);
+          editor.commands.setContent(
+            textToDoc((baseText ? baseText + "\n\n" : "") + added),
+            false
+          );
           scrollToBottom();
         },
         (evt) => {
           if (typeof evt.balance === "number") setBalance(evt.balance);
+          // O servidor concatena, normaliza, indexa (RAG) e salva o capítulo.
+          if (typeof evt.contentText === "string") serverText = evt.contentText;
+          if (evt.targetReached) setMessage("Meta de páginas atingida — hora de revisar.");
         }
       );
-      if (added.trim()) {
-        const finalText = baseText + "\n\n" + added;
+      if (serverText) {
+        // Sincroniza com o texto salvo pelo servidor (motor de consistência).
+        const synced: string = serverText;
+        editor.commands.setContent(textToDoc(synced), false);
+        setChapters((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, contentText: synced } : c))
+        );
+        setDirty(false);
+        setLastSaved(Date.now());
+        clearDraft(id);
+      } else if (added.trim()) {
+        // Fallback: salva pelo cliente caso o servidor não tenha persistido.
+        const finalText = (baseText ? baseText + "\n\n" : "") + added;
         void persist(id, editor.getJSON(), finalText);
       }
     } catch {
@@ -601,7 +678,8 @@ export function WritingStudio({
     }
   }
 
-  const busy = generating || humanizing || illustrating || normalizingDoc;
+  const busy =
+    generating || humanizing || illustrating || normalizingDoc || creating;
 
   return (
     <div className="flex h-[calc(100vh-57px)]">
@@ -631,7 +709,7 @@ export function WritingStudio({
             return (
               <div key={c.id}>
                 <div
-                  className={`flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-sm ${
+                  className={`group/ch flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-sm ${
                     activeId === c.id
                       ? "bg-indigo-500/15 text-indigo-700"
                       : "text-foreground hover:bg-accent"
@@ -661,24 +739,48 @@ export function WritingStudio({
                     {c.title}{" "}
                     <span className="text-xs opacity-60">({pages.length}p)</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void removeChapter(c.id)}
+                    disabled={busy}
+                    title="Deletar capítulo (todo o conteúdo será perdido)"
+                    aria-label="Deletar capítulo"
+                    className="shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-red-500/10 hover:text-red-600 focus-visible:opacity-100 group-hover/ch:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </div>
                 {open && pages.length > 0 && (
                   <div className="ml-4 flex flex-col border-l pl-2">
                     {pages.map((pg, i) => (
-                      <button
+                      <div
                         key={i}
-                        type="button"
-                        onClick={() => goToPage(c.id, pg.wordStart)}
-                        disabled={busy}
-                        title={pg.preview}
-                        className="flex items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs text-foreground/80 hover:bg-accent hover:text-indigo-700"
+                        className="group/pg flex items-center gap-1 rounded hover:bg-accent"
                       >
-                        <FileText className="size-3 shrink-0 opacity-60" />
-                        <span className="w-8 shrink-0 tabular-nums opacity-70">
-                          {pg.displayNumber ?? "·"}
-                        </span>
-                        <span className="truncate opacity-80">{pg.preview || "—"}</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => goToPage(c.id, pg.wordStart)}
+                          disabled={busy}
+                          title={pg.preview}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 truncate px-1.5 py-1 text-left text-xs text-foreground/80 hover:text-indigo-700"
+                        >
+                          <FileText className="size-3 shrink-0 opacity-60" />
+                          <span className="w-8 shrink-0 tabular-nums opacity-70">
+                            {pg.displayNumber ?? "·"}
+                          </span>
+                          <span className="truncate opacity-80">{pg.preview || "—"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removePage(c.id, i)}
+                          disabled={busy}
+                          title="Deletar linha (o conteúdo dessa página será perdido)"
+                          aria-label="Deletar linha"
+                          className="shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition hover:bg-red-500/10 hover:text-red-600 focus-visible:opacity-100 group-hover/pg:opacity-100"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -718,22 +820,30 @@ export function WritingStudio({
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {/* Gerar */}
-            <Button onClick={generate} disabled={busy} title="Gera o próximo capítulo seguindo a história">
-              {generating ? (
+            <Button
+              onClick={createNewChapter}
+              disabled={busy || creating}
+              title="Cria um capítulo vazio (sem gerar texto). Use 'Continuar geração' para escrever com IA."
+            >
+              {creating ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Sparkles className="size-4" />
+                <Plus className="size-4" />
               )}
-              {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
+              {chapters.length === 0 ? "Criar 1º capítulo" : "Novo capítulo"}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={continueChapter}
               disabled={busy || !activeId}
-              title="Continua o capítulo aberto a partir de onde parou, dando sequência lógica ao contexto anterior"
+              title="Gera/continua o texto do capítulo aberto a partir de onde parou, dando sequência lógica ao contexto anterior"
             >
-              <PenLine className="size-4" />
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
               Continuar geração
             </Button>
             <Button
