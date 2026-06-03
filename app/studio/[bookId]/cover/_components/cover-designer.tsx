@@ -48,9 +48,15 @@ export function CoverDesigner({
   const [spineText, setSpineText] = useState((i.spineText as string) ?? "");
   const [fontDisplay, setFontDisplay] = useState((i.fontDisplay as string) ?? FONTS[0]);
   const [fontText, setFontText] = useState((i.fontText as string) ?? FONTS[0]);
-  const [layout, setLayout] = useState<CoverLayout>((i.layout as CoverLayout) ?? { titleColor: "#ffffff", authorColor: "#f0e9da", titlePos: "top", titleScale: 1, overlay: 0.25, background: "#15131f" });
+  const [layout, setLayout] = useState<CoverLayout>(
+    i.layout && typeof i.layout === "object"
+      ? (i.layout as CoverLayout)
+      : { titleColor: "#ffffff", authorColor: "#f0e9da", titlePos: "top", titleScale: 1, overlay: 0.25, background: "#15131f" }
+  );
   const [backText, setBackText] = useState((i.backText as string) ?? "");
-  const [socialProof, setSocialProof] = useState<SocialItem[]>((i.socialProof as SocialItem[]) ?? []);
+  const [socialProof, setSocialProof] = useState<SocialItem[]>(
+    Array.isArray(i.socialProof) ? (i.socialProof as SocialItem[]) : []
+  );
   const [flapFront, setFlapFront] = useState((i.flapFront as string) ?? "");
   const [flapBio, setFlapBio] = useState((i.flapBio as string) ?? "");
   const [target, setTarget] = useState<"ebook" | "print">(((i.target as "ebook" | "print") ?? "ebook"));

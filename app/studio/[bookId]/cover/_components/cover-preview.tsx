@@ -30,13 +30,15 @@ export function CoverPreview({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let alive = true;
-    void drawCover(ctx, cfg).then(() => {
-      if (!alive) return;
+    drawCover(ctx, cfg).catch((e) => {
+      if (alive) console.error("cover preview draw error:", e);
     });
     return () => {
       alive = false;
     };
   }, [cfg, view]);
+
+  const proof = Array.isArray(socialProof) ? socialProof : [];
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -60,7 +62,7 @@ export function CoverPreview({
             <p className="whitespace-pre-line leading-relaxed">
               {backText || "A apresentação da 4ª capa aparece aqui. Use ✨ Gerar."}
             </p>
-            {(socialProof ?? []).map((s, i) => (
+            {proof.map((s, i) => (
               <blockquote key={i} className="border-l-2 border-white/40 pl-3 italic opacity-90">
                 “{s.quote}”
                 <footer className="mt-1 text-xs not-italic opacity-70">— {s.author}</footer>
