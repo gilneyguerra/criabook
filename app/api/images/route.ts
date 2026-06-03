@@ -53,15 +53,14 @@ export async function POST(request: Request) {
 
   const fullPrompt = `${base}. Ilustração editorial para livro de ${book.genre ?? "ficção"}, tom ${book.tone ?? "neutro"}; sem texto na imagem.`;
 
-  let url: string | null = null;
+  let url: string;
   try {
     url = await generateImage(fullPrompt);
-  } catch {
-    url = null;
-  }
-  if (!url) {
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("ilustrar error:", detail);
     return NextResponse.json(
-      { error: "Não foi possível gerar a imagem agora. Tente novamente." },
+      { error: `Não foi possível gerar a imagem. (${detail})` },
       { status: 502 }
     );
   }
