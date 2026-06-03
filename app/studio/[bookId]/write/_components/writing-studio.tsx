@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
+  Check,
 } from "lucide-react";
 
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
