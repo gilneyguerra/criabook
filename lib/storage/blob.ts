@@ -14,7 +14,7 @@ export function hasBlob(): boolean {
 /** Persiste bytes no Blob e retorna a URL pública (null sem token). */
 export async function persistBytes(
   key: string,
-  body: Buffer | Uint8Array | ArrayBuffer,
+  body: Buffer,
   contentType: string
 ): Promise<string | null> {
   if (!hasBlob()) return null;
