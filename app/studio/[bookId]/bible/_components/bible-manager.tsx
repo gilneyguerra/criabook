@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, BookText } from "lucide-react";
+import { Plus, Trash2, BookText, Sparkles, Loader2 } from "lucide-react";
 
 import { addBibleEntry, removeBibleEntryAction } from "../actions";
+import { generateBibleSection } from "@/app/studio/[bookId]/prompt/actions";
 import type { BibleType } from "@/lib/db/queries";
+import type { BibleSection } from "@/lib/ai/claude";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,21 +92,39 @@ const SECTIONS: Section[] = [
   },
 ];
 
+// Seções que a IA sabe gerar (glossário fica de fora do gerador).
+const AI_SECTIONS = new Set<BibleType>([
+  "character",
+  "location",
+  "world_rule",
+  "timeline",
+]);
+
 export function BibleManager({
   bookId,
   bookTitle,
   bible,
+  embedded = false,
 }: {
   bookId: string;
   bookTitle: string;
   bible: Bible;
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [forms, setForms] = useState<Record<string, Record<string, string>>>({});
   const [pending, setPending] = useState<string | null>(null);
+  const [genSection, setGenSection] = useState<string | null>(null);
 
   function setField(type: string, k: string, v: string) {
     setForms((f) => ({ ...f, [type]: { ...(f[type] ?? {}), [k]: v } }));
+  }
+
+  async function generate(type: BibleType) {
+    setGenSection(type);
+    const res = await generateBibleSection(bookId, type as BibleSection);
+    setGenSection(null);
+    if (res?.ok) router.refresh();
   }
 
   async function add(section: Section) {
@@ -129,24 +148,18 @@ export function BibleManager({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-widest text-indigo-500">
-            <BookText className="size-4" /> Bíblia da história
-          </p>
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl px-6 py-8"}>
+      <div className="mb-8">
+        <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-widest text-indigo-500">
+          <BookText className="size-4" /> Bíblia da história
+        </p>
+        {!embedded && (
           <h1 className="mt-1 font-serif text-3xl font-semibold">{bookTitle}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            A fonte única de verdade. Tudo que você cadastrar aqui é injetado na
-            geração para manter a consistência (cap. 8 lembra do cap. 2).
-          </p>
-        </div>
-        <Link
-          href={`/studio/${bookId}/write`}
-          className="link-underline shrink-0 text-sm text-muted-foreground"
-        >
-          Ir para a escrita →
-        </Link>
+        )}
+        <p className="mt-2 text-sm text-muted-foreground">
+          A fonte única de verdade — injetada na geração para manter a consistência
+          (cap. 8 lembra do cap. 2). Use o ✨ para gerar a partir da base.
+        </p>
       </div>
 
       <div className="flex flex-col gap-10">
@@ -155,10 +168,27 @@ export function BibleManager({
           const data = forms[section.type] ?? {};
           return (
             <section key={section.type} className="flex flex-col gap-3">
-              <h2 className="font-medium">
-                {section.label}{" "}
-                <span className="text-muted-foreground">({rows.length})</span>
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-medium">
+                  {section.label}{" "}
+                  <span className="text-muted-foreground">({rows.length})</span>
+                </h2>
+                {AI_SECTIONS.has(section.type) && (
+                  <button
+                    type="button"
+                    onClick={() => generate(section.type)}
+                    disabled={genSection === section.type}
+                    className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+                  >
+                    {genSection === section.type ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-3" />
+                    )}
+                    Gerar
+                  </button>
+                )}
+              </div>
 
               {rows.length > 0 && (
                 <ul className="flex flex-col divide-y rounded-lg border">

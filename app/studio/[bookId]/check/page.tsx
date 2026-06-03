@@ -9,6 +9,7 @@ import {
   getTimelineEvents,
 } from "@/lib/memory/ledgers";
 import { ConsistencyChecker } from "./_components/consistency-checker";
+import { NextStep } from "../_components/next-step";
 
 export default async function CheckPage({
   params,
@@ -29,6 +30,7 @@ export default async function CheckPage({
   ]);
 
   return (
+    <>
     <ConsistencyChecker
       bookId={bookId}
       bookTitle={book.title ?? "Sem título"}
@@ -59,5 +61,9 @@ export default async function CheckPage({
           : [],
       }))}
     />
+      <div className="mx-auto flex max-w-3xl justify-end px-6 pb-10">
+        <NextStep bookId={bookId} seg="matter" label="Páginas" />
+      </div>
+    </>
   );
 }

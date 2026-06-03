@@ -18,6 +18,18 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Converte ênfase markdown leve em tags reais (aplicar APÓS escapeHtml). */
+function emphasis(escaped: string): string {
+  return escaped
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+    .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+}
+
+function para(text: string): string {
+  return emphasis(escapeHtml(text)).replace(/\n/g, "<br/>");
+}
+
 /** Um parágrafo é diálogo se inicia com travessão (—). */
 function isDialogue(p: string): boolean {
   return /^\s*—/.test(p);
@@ -54,8 +66,7 @@ export function chapterToXhtml(
       if (isDialogue(p)) classes.push("dialogue");
       const cls = classes.length ? ` class="${classes.join(" ")}"` : "";
       // Quebras simples dentro do parágrafo viram <br/> (raro em prosa).
-      const inner = escapeHtml(p).replace(/\n/g, "<br/>");
-      return `<p${cls}>${inner}</p>`;
+      return `<p${cls}>${para(p)}</p>`;
     })
     .join("\n");
 
@@ -79,7 +90,7 @@ export function matterToXhtml(
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`)
+    .map((p) => `<p>${para(p)}</p>`)
     .join("\n");
 
   const html =

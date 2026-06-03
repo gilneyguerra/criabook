@@ -9,7 +9,7 @@ import {
   LAYOUT_PROFILE_OPTIONS,
   defaultProfileIdForType,
 } from "@/lib/layout/profile";
-import { saveBrief } from "../actions";
+import { saveBrief, suggestFieldAction } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,19 +48,29 @@ export function PromptBuilder({
   initialTitle,
   initialSelections,
   initialEditorial,
+  embedded = false,
 }: {
   bookId: string;
   initialTitle: string;
   initialSelections: Selections;
   initialEditorial: Editorial;
+  embedded?: boolean;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [selections, setSelections] = useState<Selections>(initialSelections);
   const [editorial, setEditorial] = useState<Editorial>(initialEditorial);
+  const [suggesting, setSuggesting] = useState<string | null>(null);
 
   function setEd<K extends keyof Editorial>(k: K, v: Editorial[K]) {
     setEditorial((e) => ({ ...e, [k]: v }));
     setSaved(false);
+  }
+
+  async function suggest(kind: "logline" | "audience" | "tone") {
+    setSuggesting(kind);
+    const res = await suggestFieldAction(bookId, kind);
+    setSuggesting(null);
+    if (res?.ok && res.text) setEd(kind, res.text);
   }
   const [suggestions, setSuggestions] = useState<Selections>({});
   const [loadingCat, setLoadingCat] = useState<string | null>(null);
@@ -132,15 +142,16 @@ export function PromptBuilder({
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8">
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl px-6 py-8"}>
       <div className="mb-8">
         <p className="text-sm font-medium uppercase tracking-widest text-indigo-500">
-          Construtor de prompt
+          Base editorial
         </p>
-        <h1 className="mt-1 font-serif text-3xl font-semibold">A base do seu livro</h1>
+        {!embedded && (
+          <h1 className="mt-1 font-serif text-3xl font-semibold">A base do seu livro</h1>
+        )}
         <p className="mt-2 text-sm text-muted-foreground">
-          Clique nas sugestões ou crie as suas. Isso vira a engenharia por trás
-          da geração.
+          O DNA do livro: tudo aqui é injetado na geração. Use o ✨ para sugerir.
         </p>
       </div>
 
@@ -179,11 +190,26 @@ export function PromptBuilder({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="logline">
-            {editorial.type === "fiction"
-              ? "Promessa central (logline)"
-              : "Transformação prometida"}
-          </Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="logline">
+              {editorial.type === "fiction"
+                ? "Promessa central (logline)"
+                : "Transformação prometida"}
+            </Label>
+            <button
+              type="button"
+              onClick={() => suggest("logline")}
+              disabled={suggesting === "logline"}
+              className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+            >
+              {suggesting === "logline" ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Sparkles className="size-3" />
+              )}
+              Sugerir
+            </button>
+          </div>
           <textarea
             id="logline"
             rows={2}
@@ -200,7 +226,22 @@ export function PromptBuilder({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="audience">Público-alvo</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="audience">Público-alvo</Label>
+              <button
+                type="button"
+                onClick={() => suggest("audience")}
+                disabled={suggesting === "audience"}
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+              >
+                {suggesting === "audience" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3" />
+                )}
+                Sugerir
+              </button>
+            </div>
             <Input
               id="audience"
               value={editorial.audience}
@@ -209,7 +250,22 @@ export function PromptBuilder({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tone">Tom</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tone">Tom</Label>
+              <button
+                type="button"
+                onClick={() => suggest("tone")}
+                disabled={suggesting === "tone"}
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+              >
+                {suggesting === "tone" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Sparkles className="size-3" />
+                )}
+                Sugerir
+              </button>
+            </div>
             <Input
               id="tone"
               value={editorial.tone}

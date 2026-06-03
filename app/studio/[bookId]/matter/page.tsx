@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { getBookForUser, getChapters, getBookMeta } from "@/lib/db/queries";
 import type { Matter } from "@/lib/matter";
 import { MatterEditor } from "./_components/matter-editor";
+import { NextStep } from "../_components/next-step";
 
 export default async function MatterPage({
   params,
@@ -23,14 +24,19 @@ export default async function MatterPage({
   const matter = (meta?.matter ?? {}) as Matter;
 
   return (
-    <MatterEditor
-      bookId={bookId}
-      bookTitle={book.title ?? "Sem título"}
-      chapters={chapters.map((c) => ({
-        index: c.index,
-        title: c.title ?? `Capítulo ${c.index}`,
-      }))}
-      initialMatter={matter}
-    />
+    <>
+      <MatterEditor
+        bookId={bookId}
+        bookTitle={book.title ?? "Sem título"}
+        chapters={chapters.map((c) => ({
+          index: c.index,
+          title: c.title ?? `Capítulo ${c.index}`,
+        }))}
+        initialMatter={matter}
+      />
+      <div className="mx-auto flex max-w-3xl justify-end px-6 pb-10">
+        <NextStep bookId={bookId} seg="export" label="Exportar" />
+      </div>
+    </>
   );
 }

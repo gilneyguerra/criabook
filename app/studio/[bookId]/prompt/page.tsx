@@ -2,10 +2,10 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { getBookForUser } from "@/lib/db/queries";
-import { PromptBuilder } from "./_components/prompt-builder";
+import { getBookForUser, getBible } from "@/lib/db/queries";
+import { FoundationStudio } from "./_components/foundation-studio";
 
-export default async function PromptPage({
+export default async function FoundationPage({
   params,
 }: {
   params: Promise<{ bookId: string }>;
@@ -17,11 +17,13 @@ export default async function PromptPage({
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) notFound();
 
+  const bible = await getBible(bookId);
   const brief = (book.brief ?? {}) as Record<string, string[]>;
 
   return (
-    <PromptBuilder
+    <FoundationStudio
       bookId={bookId}
+      bookTitle={book.title ?? "Sem título"}
       initialTitle={book.title ?? ""}
       initialSelections={brief}
       initialEditorial={{
@@ -33,6 +35,7 @@ export default async function PromptPage({
         structureMethod: book.structureMethod ?? "",
         layoutProfileId: book.layoutProfileId ?? "",
       }}
+      bible={bible}
     />
   );
 }

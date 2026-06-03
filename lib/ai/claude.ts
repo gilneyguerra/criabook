@@ -478,6 +478,152 @@ export async function extractChapterState(
   }
 }
 
+/* ------------------- Geração da Bíblia por IA (FLUXO_E_UX) ------------------- */
+
+const BIBLE_TOOL: Anthropic.Tool = {
+  name: "montar_biblia",
+  description:
+    "Propõe elementos da Bíblia da história (mundo) coerentes com a base do livro.",
+  input_schema: {
+    type: "object",
+    properties: {
+      characters: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            role: { type: "string", description: "protagonista, antagonista, secundário" },
+            appearance: { type: "string" },
+            traits: { type: "string" },
+            arc: { type: "string", description: "arco/transformação" },
+          },
+          required: ["name"],
+        },
+      },
+      locations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+          },
+          required: ["name"],
+        },
+      },
+      worldRules: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            category: { type: "string", description: "magia, tecnologia, política…" },
+            rule: { type: "string" },
+          },
+          required: ["rule"],
+        },
+      },
+      timeline: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            order: { type: "number" },
+            description: { type: "string" },
+          },
+          required: ["description"],
+        },
+      },
+    },
+    required: [],
+  },
+};
+
+export type BibleSection = "character" | "location" | "world_rule" | "timeline";
+
+export type GeneratedBible = {
+  characters: { name: string; role?: string; appearance?: string; traits?: string; arc?: string }[];
+  locations: { name: string; description?: string }[];
+  worldRules: { category?: string; rule: string }[];
+  timeline: { order?: number; description: string }[];
+};
+
+const SECTION_LABEL: Record<BibleSection, string> = {
+  character: "personagens (com papel, aparência, traços e arco)",
+  location: "locais (com descrição)",
+  world_rule: "regras do mundo",
+  timeline: "esqueleto de linha do tempo (eventos em ordem)",
+};
+
+/**
+ * Gera a Bíblia (mundo) a partir da base. Sem `section` = cascata (tudo);
+ * com `section` = só aquela seção. Vazio sem API key.
+ */
+export async function generateBible(
+  bookContext: string,
+  section?: BibleSection
+): Promise<GeneratedBible> {
+  const empty: GeneratedBible = { characters: [], locations: [], worldRules: [], timeline: [] };
+  const anthropic = getAnthropic();
+  if (!anthropic) return empty;
+
+  const alvo = section
+    ? `Gere APENAS ${SECTION_LABEL[section]}.`
+    : "Gere o elenco, os locais, as regras do mundo e um esqueleto de linha do tempo.";
+
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 2000,
+      system:
+        "Você é um editor de desenvolvimento. A partir da base do livro (logline, " +
+        "gênero, tom, método), proponha uma Bíblia da história COERENTE com esse DNA. " +
+        `${alvo} Seja específico e conciso, em pt-BR. Não repita itens triviais.`,
+      messages: [{ role: "user", content: bookContext }],
+      tools: [BIBLE_TOOL],
+      tool_choice: { type: "tool", name: BIBLE_TOOL.name },
+    });
+    const block = res.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") return empty;
+    const inp = block.input as Partial<GeneratedBible>;
+    return {
+      characters: Array.isArray(inp.characters) ? inp.characters : [],
+      locations: Array.isArray(inp.locations) ? inp.locations : [],
+      worldRules: Array.isArray(inp.worldRules) ? inp.worldRules : [],
+      timeline: Array.isArray(inp.timeline) ? inp.timeline : [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** Sugere o texto de UM campo da base (logline/público/tom). "" sem API key. */
+export async function suggestField(
+  kind: "logline" | "audience" | "tone",
+  bookContext: string
+): Promise<string> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return "";
+  const pedido =
+    kind === "logline"
+      ? "uma logline/promessa central forte (1 frase) que dê vontade de ler"
+      : kind === "audience"
+        ? "o público-alvo e o nível de leitura (1 frase curta)"
+        : "o tom da obra (3 a 6 adjetivos/expressões, ex.: sombrio, lírico, irônico)";
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 200,
+      system: `Sugira ${pedido}, coerente com a base do livro. Responda só o texto, em pt-BR, sem aspas nem rótulos.`,
+      messages: [{ role: "user", content: bookContext }],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
 export function friendlyAiError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();

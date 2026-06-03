@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getBookForUser, getStoryBeats } from "@/lib/db/queries";
 import { RoadmapView, type BeatRow } from "./_components/roadmap-view";
+import { NextStep } from "../_components/next-step";
 
 const DEMO_BEATS: BeatRow[] = [
   { id: "b1", order: 0, title: "Prólogo", summary: "O envelope sem remetente que muda tudo para Lia.", beatType: "setup" },
@@ -39,17 +40,22 @@ export default async function RoadmapPage({
 
   const beats = await getStoryBeats(bookId).catch(() => []);
   return (
-    <RoadmapView
-      bookId={bookId}
-      bookTitle={book.title ?? "Meu livro"}
-      isDemo={false}
-      initialBeats={beats.map((b) => ({
-        id: b.id,
-        order: b.order,
-        title: b.title ?? "",
-        summary: b.summary ?? "",
-        beatType: b.beatType ?? "beat",
-      }))}
-    />
+    <>
+      <RoadmapView
+        bookId={bookId}
+        bookTitle={book.title ?? "Meu livro"}
+        isDemo={false}
+        initialBeats={beats.map((b) => ({
+          id: b.id,
+          order: b.order,
+          title: b.title ?? "",
+          summary: b.summary ?? "",
+          beatType: b.beatType ?? "beat",
+        }))}
+      />
+      <div className="mx-auto flex max-w-3xl justify-end px-6 pb-10">
+        <NextStep bookId={bookId} seg="write" label="Escrita" />
+      </div>
+    </>
   );
 }

@@ -14,12 +14,12 @@ import {
   RotateCcw,
   PenLine,
   History,
-  Download,
+  ArrowRight,
   ImageIcon,
   Eraser,
 } from "lucide-react";
 
-import { textToDoc, wordCount } from "@/lib/tiptap";
+import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
 import { saveChapter, snapshotChapter, normalizeChapter } from "../actions";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,7 @@ export function WritingStudio({
       if (!id) return;
       setDirty(true);
       const json = editor.getJSON();
-      const text = editor.getText({ blockSeparator: "\n\n" });
+      const text = docToText(editor.getJSON());
       saveDraft(id, { json, text, at: Date.now() });
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
       autosaveTimer.current = setTimeout(() => void persist(id, json, text), 2500);
@@ -159,7 +159,7 @@ export function WritingStudio({
     void persist(
       activeIdRef.current,
       editor.getJSON(),
-      editor.getText({ blockSeparator: "\n\n" })
+      docToText(editor.getJSON())
     );
   }
 
@@ -168,7 +168,7 @@ export function WritingStudio({
     setSaving(true);
     await snapshotChapter(bookId, activeIdRef.current, {
       contentJson: editor.getJSON(),
-      contentText: editor.getText({ blockSeparator: "\n\n" }),
+      contentText: docToText(editor.getJSON()),
     });
     setSaving(false);
     setDirty(false);
@@ -288,7 +288,7 @@ export function WritingStudio({
     setMessage(null);
     setInsufficient(false);
     setRecovery(null);
-    const baseText = editor.getText({ blockSeparator: "\n\n" });
+    const baseText = docToText(editor.getJSON());
 
     try {
       const res = await fetch("/api/generate", {
@@ -390,7 +390,7 @@ export function WritingStudio({
       const id = activeIdRef.current;
       if (id) {
         setDirty(true);
-        void persist(id, editor.getJSON(), editor.getText({ blockSeparator: "\n\n" }));
+        void persist(id, editor.getJSON(), docToText(editor.getJSON()));
       }
     } catch {
       setMessage("Falha de conexão ao humanizar.");
@@ -433,7 +433,7 @@ export function WritingStudio({
   async function normalizeDoc() {
     if (!editor || !activeIdRef.current) return;
     const id = activeIdRef.current;
-    const text = editor.getText({ blockSeparator: "\n\n" });
+    const text = docToText(editor.getJSON());
     if (!text.trim()) return;
     setNormalizingDoc(true);
     setMessage(null);
@@ -522,7 +522,7 @@ export function WritingStudio({
               size="sm"
               onClick={humanize}
               disabled={busy || !activeId}
-              title="Selecione um trecho e clique para reescrever de forma mais humana"
+              title="Estilo da prosa: reescreve o trecho selecionado para soar mais humano (remove os 'AI tells')"
             >
               {humanizing ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -536,7 +536,7 @@ export function WritingStudio({
               size="sm"
               onClick={normalizeDoc}
               disabled={busy || !activeId}
-              title="Aplica a tipografia PT-BR: aspas curvas, travessão de diálogo, reticências"
+              title="Caracteres tipográficos (não mexe no estilo): aspas curvas, travessão de diálogo, reticências, espaços"
             >
               {normalizingDoc ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -596,11 +596,11 @@ export function WritingStudio({
               )}
               Ilustrar
             </Button>
-            <Button asChild variant="ghost" size="sm" disabled={chapters.length === 0}>
-              <a href={`/api/export?bookId=${bookId}`} title="Baixar EPUB">
-                <Download className="size-4" />
-                EPUB
-              </a>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/studio/${bookId}/check`} title="Ir para a Revisão de consistência">
+                Próximo: Revisão
+                <ArrowRight className="size-4" />
+              </Link>
             </Button>
           </div>
         </header>

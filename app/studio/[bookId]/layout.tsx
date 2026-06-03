@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { auth } from "@/lib/auth";
+import { getStudioProgress } from "@/lib/studio/progress";
+import { StudioNav } from "./_components/studio-nav";
 
 export default async function StudioLayout({
   children,
@@ -17,38 +19,20 @@ export default async function StudioLayout({
     redirect("/login");
   }
   const { bookId } = await params;
-
-  const navItems = [
-    { href: `/studio/${bookId}/write`, label: "Escrita" },
-    { href: `/studio/${bookId}/bible`, label: "Bíblia" },
-    { href: `/studio/${bookId}/roadmap`, label: "Mapa" },
-    { href: `/studio/${bookId}/check`, label: "Revisão" },
-    { href: `/studio/${bookId}/versions`, label: "Versões" },
-    { href: `/studio/${bookId}/matter`, label: "Páginas" },
-    { href: `/studio/${bookId}/prompt`, label: "Base" },
-  ];
+  const progress = await getStudioProgress(bookId, session.user.id);
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center gap-4 border-b px-6 py-3">
+      <header className="flex items-center gap-3 border-b px-4 py-2.5">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          <span className="link-underline">Dashboard</span>
+          <span className="link-underline hidden sm:inline">Dashboard</span>
         </Link>
-        <nav className="flex items-center gap-3 text-sm">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="link-underline text-muted-foreground hover:text-foreground"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <span className="h-5 w-px shrink-0 bg-border" />
+        <StudioNav bookId={bookId} progress={progress} />
       </header>
       <main className="flex-1">{children}</main>
     </div>
