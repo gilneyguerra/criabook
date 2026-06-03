@@ -3,23 +3,49 @@
  * Padrão assíncrono: createTask -> polling em recordInfo. resultJson é uma
  * STRING JSON com { resultUrls }. Sem dependências; guardado sem API key.
  *
- * Erros são PROPAGADOS (KieError) com o motivo real (status/código/corpo) para
- * facilitar o diagnóstico; as rotas decidem como exibir.
+ * Modelo: ideogram/v3-text-to-image (funciona "out of the box"). Imagen4-ultra
+ * e Seedream EXIGEM pre-flight no Playground da Kie antes de uso — por isso
+ * davam "Internal Error" (lição aprendida no projeto AWESHIRT).
  *
- * Obs.: as URLs da Kie.ai expiram (~14 dias) — rehospedamos no Vercel Blob.
+ * Erros são PROPAGADOS (KieError) com o motivo real. As URLs expiram (~14 dias)
+ * — rehospedamos no Vercel Blob.
  */
 
 const BASE = process.env.KIE_AI_BASE_URL ?? "https://api.kie.ai";
 const KEY = process.env.KIE_AI_API_KEY;
-export const KIE_MODEL = process.env.KIE_DEFAULT_MODEL ?? "google/imagen4-ultra";
+export const KIE_MODEL =
+  process.env.KIE_DEFAULT_MODEL ?? "ideogram/v3-text-to-image";
 
 export class KieError extends Error {}
+
+export type KieImageOpts = {
+  imageSize?: string; // square_hd | portrait_4_3 | portrait_16_9 | landscape_4_3...
+  style?: "DESIGN" | "REALISTIC";
+  timeoutMs?: number;
+};
 
 export function hasKie(): boolean {
   return Boolean(KEY);
 }
 
-async function createTask(prompt: string): Promise<string> {
+/** Monta o input conforme o modelo (ideogram tem schema próprio). */
+function buildInput(prompt: string, opts: KieImageOpts): Record<string, unknown> {
+  if (KIE_MODEL.includes("ideogram")) {
+    return {
+      prompt,
+      rendering_speed: "QUALITY",
+      style: opts.style ?? "DESIGN",
+      expand_prompt: false,
+      image_size: opts.imageSize ?? "square_hd",
+      negative_prompt:
+        "blurry, low detail, watermark, signature, text, lettering, typography, low resolution",
+    };
+  }
+  // Outros modelos: input genérico.
+  return { prompt };
+}
+
+async function createTask(prompt: string, opts: KieImageOpts): Promise<string> {
   if (!KEY) throw new KieError("KIE_AI_API_KEY ausente.");
   let res: Response;
   try {
@@ -28,8 +54,9 @@ async function createTask(prompt: string): Promise<string> {
       headers: {
         Authorization: `Bearer ${KEY}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
       },
-      body: JSON.stringify({ model: KIE_MODEL, input: { prompt } }),
+      body: JSON.stringify({ model: KIE_MODEL, input: buildInput(prompt, opts) }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch (e) {
@@ -88,9 +115,10 @@ async function recordInfo(
  */
 export async function generateImage(
   prompt: string,
-  timeoutMs = 55_000
+  opts: KieImageOpts = {}
 ): Promise<string> {
-  const taskId = await createTask(prompt);
+  const timeoutMs = opts.timeoutMs ?? 55_000;
+  const taskId = await createTask(prompt, opts);
 
   const start = Date.now();
   let interval = 2_500;

@@ -55,9 +55,14 @@ export async function POST(request: Request) {
     `Composição vertical para capa, espaço para o título. ` +
     `IMPORTANTE: NÃO inclua nenhum texto, letra, número ou tipografia na imagem.`;
 
+  // Capa = retrato; estilo REALISTIC quando o pedido for fotográfico.
+  const realistic = /foto|fotogr|photo|realis|cinemat/i.test(`${style} ${prompt}`);
   let url: string;
   try {
-    url = await generateImage(fullPrompt.slice(0, 900));
+    url = await generateImage(fullPrompt.slice(0, 900), {
+      imageSize: "portrait_4_3",
+      style: realistic ? "REALISTIC" : "DESIGN",
+    });
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     console.error("cover art error:", detail);
