@@ -13,10 +13,12 @@ import {
   type CoverData,
 } from "@/lib/db/queries";
 import { bookContextText } from "@/lib/ai/prompts";
-import { generateImage, hasKie } from "@/lib/ai/kie";
-import { generateCoverText, generateSocialProof } from "@/lib/ai/claude";
+import {
+  generateCoverText,
+  generateSocialProof,
+  suggestCoverArt,
+} from "@/lib/ai/claude";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
-import { persistFromUrl } from "@/lib/storage/blob";
 import type { Matter } from "@/lib/matter";
 
 type BookRow = NonNullable<Awaited<ReturnType<typeof getBookForUser>>>;
@@ -82,54 +84,15 @@ export async function saveCover(
   return { ok: true };
 }
 
-/** Gera a arte (Camada 1) via Kie.ai e rehospeda no Blob. */
-export async function generateCoverArt(
-  bookId: string,
-  opts: { prompt: string; style?: string; palette?: string; which?: "front" | "back" }
-) {
+/** Sugere a direção de arte da Camada 1 (preenche "imagem principal"). */
+export async function suggestArtAction(bookId: string) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return { error: "Não autenticado." };
-  if (!hasKie())
-    return { error: "Geração de imagem não configurada (defina KIE_AI_API_KEY)." };
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
-
-  const cost = creditsForUsage({ images: 1 });
-  const balance = await getBalance(session.user.id);
-  if (balance < cost) return { error: "Créditos insuficientes." };
-
-  const which = opts.which ?? "front";
-  const fullPrompt =
-    `Capa de livro de ${book.genre ?? "ficção"}. ${opts.prompt}. ` +
-    `${opts.style ? `Estilo: ${opts.style}. ` : ""}` +
-    `${opts.palette ? `Paleta: ${opts.palette}. ` : ""}` +
-    `Composição vertical para capa, espaço para o título. ` +
-    `IMPORTANTE: NÃO inclua nenhum texto, letra, número ou tipografia na imagem.`;
-
-  let url: string | null = null;
-  try {
-    url = await generateImage(fullPrompt.slice(0, 900));
-  } catch {
-    url = null;
-  }
-  if (!url) return { error: "Não foi possível gerar a arte agora. Tente novamente." };
-
-  const stored = await persistFromUrl(`covers/${bookId}/${which}`, url);
-
-  const artField =
-    which === "front" ? { frontArtUrl: stored } : { backArtUrl: stored };
-  await upsertCover(bookId, {
-    ...artField,
-    artPrompt: opts.prompt,
-    style: opts.style ?? null,
-    palette: opts.palette ? { description: opts.palette } : null,
-  });
-
-  try {
-    await debitCredits(session.user.id, cost, "arte da capa");
-  } catch {}
-
-  return { ok: true, url: stored, balance: balance - cost };
+  const text = await suggestCoverArt(await coverContext(bookId, book, false));
+  if (!text) return { error: "Não foi possível sugerir agora." };
+  return { ok: true, text };
 }
 
 /** Gera um texto comercial (4ª capa / orelha / bio / prova social). */

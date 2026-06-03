@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Sparkles, Loader2, Save, ImageIcon, Download, Coins } from "lucide-react";
 
-import { saveCover, generateCoverArt, generateCoverTextAction } from "../actions";
+import { saveCover, generateCoverTextAction, suggestArtAction } from "../actions";
 import { CoverPreview } from "./cover-preview";
 import { composeCoverBlob, type CoverConfig, type CoverLayout } from "@/lib/cover/compose";
 import { estimatePages, spineWidthMm, bindingAllowsFlaps } from "@/lib/cover/spine";
@@ -59,6 +59,7 @@ export function CoverDesigner({
   const [view, setView] = useState<"front" | "back">("front");
   const [balance, setBalance] = useState(initialBalance);
   const [arting, setArting] = useState(false);
+  const [suggestingArt, setSuggestingArt] = useState(false);
   const [genKind, setGenKind] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -89,19 +90,42 @@ export function CoverDesigner({
 
   async function genArt() {
     if (!artPrompt.trim()) {
-      setMsg("Descreva a imagem principal primeiro.");
+      setMsg("Descreva a imagem principal primeiro (ou use ✨ Sugerir).");
       return;
     }
     setArting(true);
     setMsg(null);
-    const res = await generateCoverArt(bookId, { prompt: artPrompt, style, palette, which: "front" });
-    setArting(false);
-    if (res?.ok && res.url) {
-      setFrontArtUrl(res.url);
-      if (typeof res.balance === "number") setBalance(res.balance);
-    } else {
-      setMsg(res?.error ?? "Falha ao gerar a arte.");
+    try {
+      const r = await fetch("/api/cover/art", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId, prompt: artPrompt, style, palette, which: "front" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.url) {
+        setFrontArtUrl(d.url as string);
+        if (typeof d.balance === "number") setBalance(d.balance);
+      } else {
+        setMsg(d.error ?? "Falha ao gerar a arte.");
+      }
+    } catch {
+      setMsg("Falha de conexão ao gerar a arte.");
+    } finally {
+      setArting(false);
     }
+  }
+
+  async function suggestArt() {
+    setSuggestingArt(true);
+    setMsg(null);
+    const res = (await suggestArtAction(bookId)) as {
+      ok?: boolean;
+      error?: string;
+      text?: string;
+    };
+    setSuggestingArt(false);
+    if (res?.ok && res.text) setArtPrompt(res.text);
+    else setMsg(res?.error ?? "Não foi possível sugerir.");
   }
 
   async function genText(kind: "back" | "flapFront" | "bio" | "social") {
@@ -173,7 +197,7 @@ export function CoverDesigner({
     setMsg(r.ok && d.url ? "Capa exportada! Já vale para o EPUB e o Dashboard." : d.error ?? "Falha ao exportar.");
   }
 
-  const busy = arting || saving || exporting || genKind !== null;
+  const busy = arting || saving || exporting || genKind !== null || suggestingArt;
   const inputCls = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
   const areaCls = "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
@@ -230,7 +254,14 @@ export function CoverDesigner({
                 </button>
               ))}
             </div>
-            <Label className="text-xs">Imagem principal</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Imagem principal</Label>
+              <button type="button" onClick={suggestArt} disabled={suggestingArt}
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50">
+                {suggestingArt ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                Sugerir
+              </button>
+            </div>
             <textarea rows={2} value={artPrompt} onChange={(e) => setArtPrompt(e.target.value)}
               placeholder="ex.: guerreira solitária sob chuva de néon, plano americano" className={areaCls} />
             <div className="grid grid-cols-2 gap-2">

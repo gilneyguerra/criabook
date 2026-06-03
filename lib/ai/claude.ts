@@ -624,6 +624,27 @@ export async function suggestField(
   }
 }
 
+/** Sugere uma direção de arte para a capa (Camada 1). "" sem API key. */
+export async function suggestCoverArt(bookContext: string): Promise<string> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return "";
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 200,
+      system:
+        "Sugira a DIREÇÃO DE ARTE da capa em UMA frase rica: sujeito/cena, " +
+        "atmosfera, enquadramento e luz, coerente com o livro. NÃO mencione " +
+        "texto, título ou tipografia. pt-BR. Responda só a descrição.",
+      messages: [{ role: "user", content: bookContext }],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 /* ------------------- Textos comerciais da capa (FERRAMENTA_CAPA) ------------------- */
 
 const COVER_COPY_SYSTEM: Record<"back" | "flapFront" | "bio", string> = {
