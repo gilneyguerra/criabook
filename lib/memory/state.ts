@@ -4,7 +4,7 @@
  * em vez do texto bruto: compacto e determinístico, escala para livros longos.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { worldStateSnapshots } from "@/lib/db/schema";
@@ -30,6 +30,30 @@ export async function getLatestWorldState(bookId: string) {
 export async function getRollingSummary(bookId: string): Promise<string> {
   const latest = await getLatestWorldState(bookId);
   return latest?.summary ?? "";
+}
+
+/**
+ * Resumo rolante do estado ANTES de `index` (snapshot mais recente com
+ * asOfChapter < index). Garante que gerar/continuar um capítulo nunca leia o
+ * "futuro". Cap. 1 (ou index ≤ 1) → "" (sem estado anterior).
+ */
+export async function getRollingSummaryBefore(
+  bookId: string,
+  index: number
+): Promise<string> {
+  if (index <= 1) return "";
+  const rows = await db
+    .select()
+    .from(worldStateSnapshots)
+    .where(
+      and(
+        eq(worldStateSnapshots.bookId, bookId),
+        lt(worldStateSnapshots.asOfChapter, index)
+      )
+    )
+    .orderBy(desc(worldStateSnapshots.asOfChapter))
+    .limit(1);
+  return rows[0]?.summary ?? "";
 }
 
 const MAX_SUMMARY = 4000;

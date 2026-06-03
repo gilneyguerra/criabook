@@ -20,7 +20,7 @@ import {
   getDescribedItems,
   getTimelineEvents,
 } from "@/lib/memory/ledgers";
-import { getRollingSummary } from "@/lib/memory/state";
+import { getRollingSummaryBefore } from "@/lib/memory/state";
 
 type BookRow = {
   title: string | null;
@@ -34,7 +34,7 @@ type BookRow = {
   brief: unknown;
 };
 
-type ChapterRow = { index: number; contentText: string | null };
+type ChapterRow = { id?: string; index: number; contentText: string | null };
 
 function firstWords(text: string, n = 8): string {
   return text.trim().split(/\s+/).slice(0, n).join(" ");
@@ -75,12 +75,15 @@ export async function buildAnchoredContext(
       getTimelineEvents(bookId).catch(() => []),
       getBible(bookId).catch(() => null),
       getStoryBeats(bookId).catch(() => []),
-      getRollingSummary(bookId).catch(() => ""),
+      getRollingSummaryBefore(bookId, index).catch(() => ""),
     ]);
 
+  // Escopo por POSIÇÃO: gerar/continuar o capítulo `index` só enxerga o estado
+  // estabelecido nos capítulos ANTERIORES (< index). Nunca lê o "futuro".
   const canon = block(
     "CÂNONE (fatos estabelecidos — não contradiga)",
     facts
+      .filter((f) => f.establishedInChapter < index)
       .slice(0, 40)
       .map((f) => `${f.subject} · ${f.attribute}: ${f.value} (cap. ${f.establishedInChapter})`)
   );
@@ -102,23 +105,31 @@ export async function buildAnchoredContext(
   const know = block(
     "CONHECIMENTO (quem sabe o quê)",
     knowledge
+      .filter((k) => k.learnedInChapter < index)
       .slice(0, 30)
       .map((k) => `${k.character} sabe: ${k.fact} (desde cap. ${k.learnedInChapter})`)
   );
 
   const open = block(
     "FIOS_ABERTOS (avance ao menos um)",
-    threads.slice(0, 20).map((t) => `${t.description} (aberto cap. ${t.openedInChapter})`)
+    threads
+      .filter((t) => t.openedInChapter < index)
+      .slice(0, 20)
+      .map((t) => `${t.description} (aberto cap. ${t.openedInChapter})`)
   );
 
   const desc = block(
     "DESCRITOS (referencie, NÃO re-descreva)",
-    described.slice(0, 30).map((d) => `${d.subject} (cap. ${d.describedInChapter})`)
+    described
+      .filter((d) => d.describedInChapter < index)
+      .slice(0, 30)
+      .map((d) => `${d.subject} (cap. ${d.describedInChapter})`)
   );
 
   const openings = block(
     "EVITAR_ABERTURAS (não repita estes inícios)",
     chapters
+      .filter((c) => c.index < index)
       .slice(-6)
       .map((c) => (c.contentText ? `"${firstWords(c.contentText)}…"` : ""))
   );
@@ -126,6 +137,7 @@ export async function buildAnchoredContext(
   const tl = block(
     "TIMELINE (tempo da história)",
     timeline
+      .filter((e) => e.chapterRef == null || e.chapterRef < index)
       .slice(0, 30)
       .map(
         (e) =>
@@ -159,11 +171,16 @@ export async function buildAnchoredContext(
     .filter(Boolean)
     .join("\n\n");
 
-  // RAG: complemento por similaridade (vai no prompt do user).
+  // RAG: complemento por similaridade (vai no prompt do user). Exclui os
+  // capítulos do "futuro" (índice ≥ alvo) e a versão antiga do próprio capítulo.
+  const excludeSourceIds = chapters
+    .filter((c) => c.index >= index && c.id)
+    .map((c) => c.id as string);
   const retrieved = await retrieveContext(
     bookId,
     `${book.logline ?? book.title ?? ""}\nCapítulo ${index}`,
-    5
+    5,
+    { excludeSourceIds }
   ).catch(() => [] as string[]);
   const prevContext = retrieved.length
     ? `Trechos relevantes recuperados (capítulos/Bíblia):\n${retrieved.join("\n---\n")}`

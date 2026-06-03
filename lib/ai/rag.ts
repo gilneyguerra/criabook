@@ -1,4 +1,4 @@
-import { and, cosineDistance, eq, isNotNull } from "drizzle-orm";
+import { and, cosineDistance, eq, isNotNull, notInArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { ragChunks } from "@/lib/db/schema";
@@ -113,19 +113,33 @@ export async function removeBibleEntry(
   await deleteChunks(bookId, sourceType, sourceId);
 }
 
-/** Recupera os top-k chunks mais próximos da query (cosine). [] sem embeddings. */
+/**
+ * Recupera os top-k chunks mais próximos da query (cosine). [] sem embeddings.
+ * `opts.excludeSourceIds` remove chunks de fontes específicas (ex.: capítulos do
+ * "futuro" — sourceId = chapterId) para não vazar spoilers ao gerar por posição.
+ * Chunks da Bíblia (sourceId = nome) não casam UUID de capítulo → permanecem.
+ */
 export async function retrieveContext(
   bookId: string,
   query: string,
-  k = 5
+  k = 5,
+  opts?: { excludeSourceIds?: string[] }
 ): Promise<string[]> {
   const vec = await embedText(query);
   if (!vec) return [];
   const distance = cosineDistance(ragChunks.embedding, vec);
+  const exclude = opts?.excludeSourceIds?.filter(Boolean) ?? [];
+  const where = exclude.length
+    ? and(
+        eq(ragChunks.bookId, bookId),
+        isNotNull(ragChunks.embedding),
+        notInArray(ragChunks.sourceId, exclude)
+      )
+    : and(eq(ragChunks.bookId, bookId), isNotNull(ragChunks.embedding));
   const rows = await db
     .select({ chunkText: ragChunks.chunkText, distance })
     .from(ragChunks)
-    .where(and(eq(ragChunks.bookId, bookId), isNotNull(ragChunks.embedding)))
+    .where(where)
     .orderBy(distance)
     .limit(k);
   return rows.map((r) => r.chunkText);

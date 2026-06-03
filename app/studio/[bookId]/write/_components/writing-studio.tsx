@@ -23,6 +23,7 @@ import {
   Check,
   Trash2,
   Plus,
+  MapPin,
 } from "lucide-react";
 
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
@@ -681,6 +682,33 @@ export function WritingStudio({
   const busy =
     generating || humanizing || illustrating || normalizingDoc || creating;
 
+  // Posição detectada do capítulo ativo (a "ferramenta que percebe onde estou").
+  // O servidor é autoritativo na decisão de "início do livro"; isto é o reflexo
+  // visível: rótulo dinâmico do botão + chip de posição.
+  const sortedChapters = useMemo(
+    () => [...chapters].sort((a, b) => a.index - b.index),
+    [chapters]
+  );
+  const activeChapter = chapters.find((c) => c.id === activeId) ?? null;
+  const activeIsEmpty = !((activeChapter?.contentText ?? "").trim());
+  const activeIsFirst =
+    activeChapter != null && activeChapter.index === sortedChapters[0]?.index;
+  const activeRank = activeChapter
+    ? sortedChapters.findIndex((c) => c.id === activeChapter.id) + 1
+    : 0;
+  const genLabel = !activeChapter
+    ? "Continuar geração"
+    : activeIsEmpty
+      ? activeIsFirst
+        ? "Gerar início"
+        : "Gerar capítulo"
+      : "Continuar geração";
+  const posLabel = !activeChapter
+    ? ""
+    : activeIsFirst
+      ? "Início da história"
+      : `Cap. ${activeRank} de ${sortedChapters.length}`;
+
   return (
     <div className="flex h-[calc(100vh-57px)]">
       {/* Lista de capítulos */}
@@ -837,15 +865,24 @@ export function WritingStudio({
               size="sm"
               onClick={continueChapter}
               disabled={busy || !activeId}
-              title="Gera/continua o texto do capítulo aberto a partir de onde parou, dando sequência lógica ao contexto anterior"
+              title="Gera o texto a partir do PONTO da história em que você está: início do livro, abertura de um capítulo do meio, ou continuação de onde parou"
             >
               {generating ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Continuar geração
+              {genLabel}
             </Button>
+            {posLabel && (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground"
+                title="Ponto da história detectado para a geração (a IA só usa o contexto anterior a este ponto)"
+              >
+                <MapPin className="size-3" />
+                {posLabel}
+              </span>
+            )}
             <Button
               variant="ghost"
               size="sm"

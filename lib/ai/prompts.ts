@@ -150,10 +150,24 @@ export function buildChapterPrompt(index: number, prevContext?: string): string 
   ].join("\n\n");
 }
 
-export function buildContinuePrompt(tail: string, index?: number): string {
+export function buildContinuePrompt(
+  tail: string,
+  index?: number,
+  isOpeningOfBook = false
+): string {
   const t = tail.trim();
   if (!t) {
-    // Capítulo vazio: escrever a ABERTURA avançando a história (sem repetir nada).
+    // Capítulo vazio: escrever a ABERTURA. Se for o INÍCIO do livro (nenhum
+    // capítulo anterior com conteúdo), começa do zero, sem pressupor nada.
+    if (isOpeningOfBook) {
+      return [
+        `Escreva o INÍCIO do livro (Capítulo ${index ?? 1}).`,
+        "Este é o COMEÇO da história: estabeleça o tom, a ambientação e o protagonista. " +
+          "NÃO pressuponha nada anterior e NÃO antecipe eventos futuros — apresente o mundo do zero.",
+        "Use apenas a Bíblia e a premissa do projeto como base. Escreva de 400 a 700 palavras, " +
+          "em parágrafos separados por linha em branco. Termine num gancho.",
+      ].join("\n\n");
+    }
     return [
       `Escreva a ABERTURA do Capítulo ${index ?? ""} a partir do ESTADO_ATUAL e do BEAT_ATUAL do contexto.`,
       "AVANCE a história com fatos NOVOS — não recapitule nem repita capítulos anteriores.",

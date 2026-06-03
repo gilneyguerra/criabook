@@ -16,9 +16,10 @@ import {
   addDescribedItems,
   addTimelineEvents,
   addIssues,
+  clearChapterState,
 } from "@/lib/memory/ledgers";
 import {
-  getRollingSummary,
+  getRollingSummaryBefore,
   buildCumulativeSummary,
   saveWorldStateSnapshot,
 } from "@/lib/memory/state";
@@ -72,6 +73,11 @@ export async function persistExtraction(params: {
     params;
 
   const ex = await extractChapterState(cleanText, bookContext);
+
+  // Regeneração limpa: apaga o que ESTE capítulo havia registrado antes de
+  // re-extrair (evita acúmulo/duplicatas e não herda o começo antigo). O
+  // snapshot do mundo já é idempotente por capítulo (delete+insert).
+  await clearChapterState(bookId, index).catch(() => {});
 
   // Fatos: extração estruturada + marcadores [NOVO_FATO] (atributo genérico).
   await addCanonFacts(bookId, [
@@ -134,8 +140,10 @@ export async function persistExtraction(params: {
     ).catch(() => {});
   }
 
-  // Atualiza o resumo rolante + snapshot do mundo ao fim do capítulo.
-  const prev = await getRollingSummary(bookId).catch(() => "");
+  // Atualiza o resumo rolante + snapshot do mundo ao fim do capítulo. Usa o
+  // estado ANTERIOR a este capítulo (não o global) para não anexar a um resumo
+  // que já inclua capítulos posteriores ao regerar um anterior.
+  const prev = await getRollingSummaryBefore(bookId, index).catch(() => "");
   const summary = buildCumulativeSummary(prev, index, chapterSummary);
   await saveWorldStateSnapshot(bookId, index, summary, {
     openThreads: ex.openedThreads,

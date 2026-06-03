@@ -121,6 +121,7 @@ export function createContinueStream(params: {
   briefText: string;
   context: string;
   index?: number;
+  isOpeningOfBook?: boolean;
 }) {
   const anthropic = getAnthropic();
   if (!anthropic) return null;
@@ -136,7 +137,14 @@ export function createContinueStream(params: {
       },
     ],
     messages: [
-      { role: "user", content: buildContinuePrompt(params.context, params.index) },
+      {
+        role: "user",
+        content: buildContinuePrompt(
+          params.context,
+          params.index,
+          params.isOpeningOfBook
+        ),
+      },
     ],
   });
 }

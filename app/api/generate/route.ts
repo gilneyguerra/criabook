@@ -95,10 +95,16 @@ export async function POST(request: Request) {
       curIndex,
       existingForCtx
     );
+    // É o INÍCIO do livro se não há capítulo anterior COM conteúdo (mesmo que
+    // existam capítulos posteriores). Decisão autoritativa no servidor.
+    const isOpeningOfBook = !existingForCtx.some(
+      (c) => c.index < curIndex && (c.contentText ?? "").trim()
+    );
     const stream = createContinueStream({
       briefText: anchoredBrief,
       context: ctx,
       index: curIndex,
+      isOpeningOfBook,
     });
     if (!stream) {
       return NextResponse.json(

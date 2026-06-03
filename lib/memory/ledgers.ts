@@ -165,6 +165,50 @@ export async function getTimelineEvents(bookId: string) {
     .orderBy(timelineEvents.order);
 }
 
+/* --------------------- Limpeza de estado por capítulo ------------------- */
+
+/**
+ * Apaga TUDO que um capítulo havia registrado (fatos, conhecimento, fios,
+ * descritos, eventos de timeline cujo índice de origem == `index`). Usado ao
+ * REGERAR um capítulo: o "novo começo" não herda o estado da versão antiga.
+ * Não afeta os demais capítulos.
+ */
+export async function clearChapterState(bookId: string, index: number) {
+  await Promise.all([
+    db
+      .delete(canonFacts)
+      .where(
+        and(eq(canonFacts.bookId, bookId), eq(canonFacts.establishedInChapter, index))
+      ),
+    db
+      .delete(characterKnowledge)
+      .where(
+        and(
+          eq(characterKnowledge.bookId, bookId),
+          eq(characterKnowledge.learnedInChapter, index)
+        )
+      ),
+    db
+      .delete(plotThreads)
+      .where(
+        and(eq(plotThreads.bookId, bookId), eq(plotThreads.openedInChapter, index))
+      ),
+    db
+      .delete(describedItems)
+      .where(
+        and(
+          eq(describedItems.bookId, bookId),
+          eq(describedItems.describedInChapter, index)
+        )
+      ),
+    db
+      .delete(timelineEvents)
+      .where(
+        and(eq(timelineEvents.bookId, bookId), eq(timelineEvents.chapterRef, index))
+      ),
+  ]);
+}
+
 /* -------------------------- Consistency issues ------------------------- */
 
 export type IssueType =
