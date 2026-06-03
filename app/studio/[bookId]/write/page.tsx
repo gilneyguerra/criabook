@@ -2,7 +2,13 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { getBookForUser, getChapters, getBookMeta } from "@/lib/db/queries";
+import {
+  getBookForUser,
+  getChapters,
+  getBookMeta,
+  getCover,
+  getBible,
+} from "@/lib/db/queries";
 import { getBalance } from "@/lib/credits";
 import { getLayoutProfile } from "@/lib/layout/profile";
 import { wordsPerPage } from "@/lib/pagination";
@@ -24,6 +30,8 @@ export default async function WritePage({
   const chapters = await getChapters(bookId).catch(() => []);
   const balance = await getBalance(session.user.id).catch(() => 0);
   const meta = await getBookMeta(bookId).catch(() => null);
+  const cover = await getCover(bookId).catch(() => null);
+  const bible = await getBible(bookId).catch(() => null);
 
   const profile = getLayoutProfile(book.layoutProfileId, book.type);
   const wpp = wordsPerPage(profile);
@@ -31,6 +39,17 @@ export default async function WritePage({
   const matter = (meta?.matter ?? {}) as Matter;
   const front = assembleMatter({ title: book.title }, [], matter, new Date().getFullYear()).front;
   const frontMatterPages = Math.max(2, front.length);
+
+  // Estado de preenchimento da estrutura pré/pós-textual (para o sidebar).
+  const structure = {
+    cover: Boolean(cover?.ebookCoverUrl || cover?.frontArtUrl),
+    dedication: Boolean(matter.dedication?.trim()),
+    epigraph: Boolean(matter.epigraph?.trim()),
+    preface: Boolean(matter.preface?.trim()),
+    aboutAuthor: Boolean(matter.aboutAuthor?.trim()),
+    acknowledgments: Boolean(matter.acknowledgments?.trim()),
+    glossary: (bible?.glossary.length ?? 0) > 0,
+  };
 
   return (
     <WritingStudio
@@ -41,6 +60,7 @@ export default async function WritePage({
       wordsPerPage={wpp}
       frontMatterPages={frontMatterPages}
       paragraphStyle={profile.epub.paragraph}
+      structure={structure}
       initialChapters={chapters.map((c) => ({
         id: c.id,
         index: c.index,

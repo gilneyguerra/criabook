@@ -11,6 +11,7 @@
  */
 
 import type { BookLayoutProfile } from "@/lib/layout/profile";
+import { isImage } from "@/lib/tiptap";
 
 const PT_TO_MM = 0.3528;
 
@@ -49,24 +50,27 @@ function splitChapter(text: string, wpp: number): { wordStart: number; preview: 
     .filter(Boolean);
 
   const pages: { wordStart: number; preview: string }[] = [];
-  let running = 0; // palavras acumuladas no capítulo
-  let pageWords = 0;
+  let realRunning = 0; // índice REAL de palavras (p/ scroll)
+  let fill = 0; // ocupação da página (imagem infla)
   let pageStart = 0;
   let pageHead = "";
 
   for (const para of paragraphs) {
-    const w = countWords(para);
-    if (pageWords > 0 && pageWords + w > wpp) {
+    const img = isImage(para);
+    const realW = countWords(para);
+    // Uma ilustração ocupa ~meia página (e nunca é partida entre páginas).
+    const fillW = img ? Math.round(wpp * 0.5) : realW;
+    if (fill > 0 && fill + fillW > wpp) {
       pages.push({ wordStart: pageStart, preview: pageHead.slice(0, 50) });
-      pageStart = running;
-      pageWords = 0;
+      pageStart = realRunning;
+      fill = 0;
       pageHead = "";
     }
-    if (!pageHead) pageHead = para;
-    pageWords += w;
-    running += w;
+    if (!pageHead) pageHead = img ? "🖼 ilustração" : para;
+    fill += fillW;
+    realRunning += realW;
   }
-  if (pageWords > 0 || pages.length === 0) {
+  if (fill > 0 || pages.length === 0) {
     pages.push({ wordStart: pageStart, preview: pageHead.slice(0, 50) });
   }
   return pages;

@@ -8,6 +8,7 @@ export type Matter = {
   authorName?: string;
   dedication?: string;
   epigraph?: string;
+  preface?: string;
   aboutAuthor?: string;
   acknowledgments?: string;
   cta?: string;
@@ -45,6 +46,8 @@ export function assembleMatter(
     front.push({ title: "Dedicatória", body: matter.dedication.trim() });
   if (matter.epigraph?.trim())
     front.push({ title: "Epígrafe", body: matter.epigraph.trim() });
+  if (matter.preface?.trim())
+    front.push({ title: "Prefácio", body: matter.preface.trim() });
   if (toc) front.push({ title: "Sumário", body: toc });
 
   const back: MatterSection[] = [];

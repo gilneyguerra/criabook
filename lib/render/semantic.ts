@@ -10,7 +10,7 @@
  */
 
 import type { BookLayoutProfile } from "@/lib/layout/profile";
-import { isSceneBreak, isHeading, headingText } from "@/lib/tiptap";
+import { isSceneBreak, isHeading, headingText, parseImage } from "@/lib/tiptap";
 
 export function escapeHtml(s: string): string {
   return s
@@ -65,6 +65,11 @@ export function chapterToXhtml(
   let afterBreak = true;
   const body = paragraphs
     .map((p) => {
+      const img = parseImage(p);
+      if (img) {
+        afterBreak = true;
+        return `<figure class="illus"><img src="${escapeHtml(img.src)}" alt="${escapeHtml(img.alt)}"/></figure>`;
+      }
       if (isSceneBreak(p)) {
         afterBreak = true;
         return `<p class="scene">* * *</p>`;
@@ -137,6 +142,9 @@ export function epubCss(profile: BookLayoutProfile): string {
     `h2.subchapter { font-size: 1.25em; margin: 1.4em 0 0.6em; }`,
     `p.scene { text-align: center; margin: 1.6em 0; letter-spacing: 0.4em; text-indent: 0; }`,
     `blockquote { margin: 1em 1.5em; font-style: italic; }`,
+    // Ilustração: inteira, dentro das margens, sem ser cortada nem dividida.
+    `figure.illus { margin: 1.2em 0; text-align: center; page-break-inside: avoid; break-inside: avoid; }`,
+    `figure.illus img { max-width: 100%; height: auto; }`,
     `img { max-width: 100%; height: auto; }`,
   ].join("\n");
 }

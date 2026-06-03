@@ -16,6 +16,7 @@ const FIELDS: { k: keyof Matter; l: string; area?: boolean; ph?: string }[] = [
   { k: "authorName", l: "Nome do autor" },
   { k: "dedication", l: "Dedicatória", area: true, ph: "Para..." },
   { k: "epigraph", l: "Epígrafe", area: true, ph: "Uma citação de abertura (opcional)" },
+  { k: "preface", l: "Prefácio", area: true, ph: "Texto de abertura / apresentação (opcional)" },
   { k: "aboutAuthor", l: "Sobre o autor", area: true },
   { k: "acknowledgments", l: "Agradecimentos", area: true },
   { k: "cta", l: "Chamada final (CTA)", area: true, ph: "Convite para newsletter, próximo livro..." },

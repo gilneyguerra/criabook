@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import {
   Sparkles,
   Coins,
@@ -44,6 +45,7 @@ export function WritingStudio({
   wordsPerPage,
   frontMatterPages,
   paragraphStyle,
+  structure,
 }: {
   bookId: string;
   title: string;
@@ -53,6 +55,15 @@ export function WritingStudio({
   wordsPerPage: number;
   frontMatterPages: number;
   paragraphStyle: "indent" | "spaced";
+  structure: {
+    cover: boolean;
+    dedication: boolean;
+    epigraph: boolean;
+    preface: boolean;
+    aboutAuthor: boolean;
+    acknowledgments: boolean;
+    glossary: boolean;
+  };
 }) {
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
   const [activeId, setActiveId] = useState<string | null>(
@@ -72,7 +83,6 @@ export function WritingStudio({
   const [recovery, setRecovery] = useState<Draft | null>(null);
   const [illustrating, setIllustrating] = useState(false);
   const [normalizingDoc, setNormalizingDoc] = useState(false);
-  const [images, setImages] = useState<Record<string, string[]>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<string | null>(activeId);
@@ -106,10 +116,10 @@ export function WritingStudio({
     paragraphStyle === "spaced"
       ? "[&_p]:my-0 [&_p]:mb-4 [&_p]:[text-indent:0]"
       : "[&_p]:my-0 [&_p]:[text-indent:1.6em] [&_p:first-child]:[text-indent:0] [&_p.scene]:[text-indent:0]";
-  const proseClass = `prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh] [&_h2]:mt-6 [&_h2]:mb-2 ${paraClass}`;
+  const proseClass = `prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh] [&_h2]:mt-6 [&_h2]:mb-2 [&_img]:mx-auto [&_img]:my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg ${paraClass}`;
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Image.configure({ inline: false })],
     editable: true,
     immediatelyRender: false,
     content: initialChapters[0]
@@ -187,6 +197,51 @@ export function WritingStudio({
       const frac = Math.min(0.98, wordStart / total);
       el.scrollTop = frac * Math.max(0, el.scrollHeight - el.clientHeight);
     }, 60);
+  }
+
+  // Estrutura editorial: pré-textuais (antes) e pós-textuais (depois).
+  type MItem = { label: string; seg?: string; filled: boolean; auto?: boolean };
+  const frontMatter: MItem[] = [
+    { label: "Capa", seg: "cover", filled: structure.cover },
+    { label: "Folha de rosto", filled: true, auto: true },
+    { label: "Créditos / Copyright", filled: true, auto: true },
+    { label: "Dedicatória", seg: "matter", filled: structure.dedication },
+    { label: "Epígrafe", seg: "matter", filled: structure.epigraph },
+    { label: "Prefácio", seg: "matter", filled: structure.preface },
+    { label: "Sumário", filled: true, auto: true },
+  ];
+  const backMatter: MItem[] = [
+    { label: "Sobre o autor", seg: "matter", filled: structure.aboutAuthor },
+    { label: "Agradecimentos", seg: "matter", filled: structure.acknowledgments },
+    { label: "Glossário", seg: "prompt", filled: structure.glossary },
+    { label: "Aviso de IA", filled: true, auto: true },
+  ];
+
+  function matterRow(it: MItem) {
+    const inner = (
+      <span className="flex items-center gap-1.5 px-2 py-1 text-xs">
+        {it.filled ? (
+          <Check className="size-3 shrink-0 text-emerald-500" />
+        ) : (
+          <span className="size-1.5 shrink-0 rounded-full border border-current/40" />
+        )}
+        <span className="truncate">{it.label}</span>
+        {it.auto && <span className="ml-auto text-[10px] opacity-40">auto</span>}
+      </span>
+    );
+    return it.seg ? (
+      <Link
+        key={it.label}
+        href={`/studio/${bookId}/${it.seg}`}
+        className="block rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        {inner}
+      </Link>
+    ) : (
+      <div key={it.label} className="block rounded text-muted-foreground/70" title="Gerado automaticamente">
+        {inner}
+      </div>
+    );
   }
 
   function scrollToBottom() {
@@ -448,15 +503,33 @@ export function WritingStudio({
   async function illustrate() {
     if (!editor || !activeIdRef.current) return;
     const id = activeIdRef.current;
+
+    // Prompt = seleção; sem seleção, o parágrafo onde está o cursor.
+    const sel = editor.state.selection;
+    const hasSel = sel.from !== sel.to;
+    const $pos = editor.state.doc.resolve(hasSel ? sel.to : sel.from);
+    const prompt = (
+      hasSel
+        ? editor.state.doc.textBetween(sel.from, sel.to, " ")
+        : editor.state.doc.textBetween($pos.start(), $pos.end(), " ")
+    )
+      .trim()
+      .slice(0, 600);
+    if (!prompt) {
+      setMessage("Selecione um trecho (ou posicione o cursor num parágrafo) para ilustrar.");
+      return;
+    }
+    // Posição logo APÓS o bloco do trecho (a imagem entra inteira, sem partir o parágrafo).
+    const insertAt = $pos.depth >= 1 ? $pos.after($pos.depth) : sel.to;
+
     setIllustrating(true);
     setMessage(null);
     setInsufficient(false);
     try {
-      const base = editor.getText({ blockSeparator: " " }).slice(0, 400);
       const res = await fetch("/api/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, chapterId: id, prompt: base }),
+        body: JSON.stringify({ bookId, chapterId: id, prompt }),
       });
       if (res.status === 402) {
         setInsufficient(true);
@@ -467,8 +540,17 @@ export function WritingStudio({
         setMessage(data.error ?? "Não foi possível ilustrar.");
         return;
       }
-      setImages((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), data.url] }));
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(insertAt, {
+          type: "image",
+          attrs: { src: data.url, alt: prompt.slice(0, 80) },
+        })
+        .run();
       if (typeof data.balance === "number") setBalance(data.balance);
+      setDirty(true);
+      void persist(id, editor.getJSON(), docToText(editor.getJSON()));
     } catch {
       setMessage("Falha de conexão ao ilustrar.");
     } finally {
@@ -517,8 +599,16 @@ export function WritingStudio({
           <span className="truncate">{title}</span>
         </div>
         <div className="flex-1 overflow-auto p-2">
+          <p className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/60">
+            Pré-textual
+          </p>
+          {frontMatter.map(matterRow)}
+
+          <p className="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/60">
+            Miolo
+          </p>
           {chapters.length === 0 && (
-            <p className="px-2 py-4 text-sm text-muted-foreground">
+            <p className="px-2 py-2 text-sm text-muted-foreground">
               Nenhum capítulo ainda. Gere o primeiro.
             </p>
           )}
@@ -582,6 +672,11 @@ export function WritingStudio({
               </div>
             );
           })}
+
+          <p className="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/60">
+            Pós-textual
+          </p>
+          {backMatter.map(matterRow)}
         </div>
         <div className="border-t p-3 text-xs text-muted-foreground">
           {totalWords.toLocaleString("pt-BR")} palavras · {bookPages}{" "}
@@ -679,7 +774,7 @@ export function WritingStudio({
               size="sm"
               onClick={illustrate}
               disabled={busy || !activeId}
-              title="Gerar uma ilustração para o capítulo (Kie.ai)"
+              title="Selecione um trecho (ou posicione o cursor) — a ilustração entra logo após ele"
             >
               {illustrating ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -733,19 +828,6 @@ export function WritingStudio({
             <EditorContent editor={editor} />
             {busy && (
               <span className="ml-0.5 inline-block h-5 w-[2px] animate-pulse bg-indigo-500 align-middle" />
-            )}
-            {activeId && (images[activeId]?.length ?? 0) > 0 && (
-              <div className="mt-6 flex flex-wrap gap-3">
-                {images[activeId].map((u, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={i}
-                    src={u}
-                    alt="Ilustração do capítulo"
-                    className="h-44 rounded-lg border object-cover"
-                  />
-                ))}
-              </div>
             )}
           </div>
         </div>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/queries";
 import { generateImage, hasKie, KIE_MODEL } from "@/lib/ai/kie";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import { persistFromUrl } from "@/lib/storage/blob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,8 +66,11 @@ export async function POST(request: Request) {
     );
   }
 
+  // Rehospeda no Blob (URLs da Kie expiram ~14 dias); a imagem fica inline no texto.
+  const stored = await persistFromUrl(`chapters/${bookId}/${chapter.id}-${Date.now()}`, url);
+
   await addChapterImage(chapter.id, {
-    storagePath: url,
+    storagePath: stored,
     prompt: fullPrompt,
     model: KIE_MODEL,
   });
@@ -74,5 +78,5 @@ export async function POST(request: Request) {
     await debitCredits(session.user.id, cost, "geração de imagem");
   } catch {}
 
-  return NextResponse.json({ url, balance: balance - cost });
+  return NextResponse.json({ url: stored, balance: balance - cost });
 }

@@ -8,14 +8,25 @@
 type Mark = { type: "italic" | "bold" };
 type TextNode = { type: "text"; text: string; marks?: Mark[] };
 type Block = {
-  type: "paragraph" | "heading";
-  attrs?: { level: number };
+  type: "paragraph" | "heading" | "image";
+  attrs?: { level?: number; src?: string; alt?: string };
   content?: TextNode[];
 };
 
 export type TiptapDoc = { type: "doc"; content: Block[] };
 
 const INLINE = /(\*\*([^*]+)\*\*|\*([^*\n]+)\*|_([^_\n]+)_)/g;
+const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
+
+/** Linha que é uma imagem em markdown: ![alt](url). */
+export function isImage(s: string): boolean {
+  return IMAGE_RE.test(s.trim());
+}
+
+export function parseImage(s: string): { src: string; alt: string } | null {
+  const m = s.trim().match(IMAGE_RE);
+  return m ? { alt: m[1] ?? "", src: m[2] } : null;
+}
 
 /** Linha que é só uma quebra de cena ("* * *", "***", "⁂"). */
 export function isSceneBreak(s: string): boolean {
@@ -63,6 +74,8 @@ export function textToDoc(text: string): TiptapDoc {
   return {
     type: "doc",
     content: paragraphs.map((p): Block => {
+      const img = parseImage(p);
+      if (img) return { type: "image", attrs: { src: img.src, alt: img.alt } };
       if (isSceneBreak(p)) {
         // Plain (sem parseInline) p/ não virar itálico.
         return { type: "paragraph", content: [{ type: "text", text: "* * *" }] };
@@ -81,6 +94,7 @@ export function docToText(doc: unknown): string {
   if (!d || !Array.isArray(d.content)) return "";
   return d.content
     .map((b) => {
+      if (b.type === "image") return `![${b.attrs?.alt ?? ""}](${b.attrs?.src ?? ""})`;
       const inner = (b.content ?? [])
         .map((n) => {
           const marks = n.marks?.map((mk) => mk.type) ?? [];
