@@ -21,6 +21,8 @@ import { textToDoc, wordCount } from "@/lib/tiptap";
 import { retrieveContext, summarizeChapter, indexChapter } from "@/lib/ai/rag";
 import { normalize } from "@/lib/text/normalizer";
 import { getLayoutProfile } from "@/lib/layout/profile";
+import { buildAnchoredContext } from "@/lib/generate/context";
+import { stripMarkers, persistExtraction } from "@/lib/generate/extract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -116,26 +118,20 @@ export async function POST(request: Request) {
   /* ---------- Modo: novo capítulo (padrão) ---------- */
   const existing = await getChapters(bookId);
   const index = existing.length + 1;
-  // Contexto RAG: resumo rolante (resumos dos capítulos) + trechos recuperados.
-  const rolling = existing
-    .map((c) => c.summary ?? (c.contentText ?? "").slice(0, 200))
-    .filter(Boolean)
-    .join("\n");
-  const retrieved = await retrieveContext(
+  // Laço preventivo: Contexto Ancorado (cânone/estado/timeline/conhecimento/
+  // fios determinísticos + RAG) em vez do resumo rolante simples.
+  const { briefText: anchoredBrief, prevContext } = await buildAnchoredContext(
     bookId,
-    `${briefText}\nCapítulo ${index}`,
-    5
+    book,
+    index,
+    existing
   );
-  const prevContext =
-    [
-      rolling && `Resumo da história até aqui:\n${rolling}`,
-      retrieved.length &&
-        `Trechos relevantes (capítulos/Bíblia):\n${retrieved.join("\n---\n")}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n") || undefined;
 
-  const stream = createChapterStream({ briefText, index, prevContext });
+  const stream = createChapterStream({
+    briefText: anchoredBrief,
+    index,
+    prevContext,
+  });
   if (!stream) {
     return NextResponse.json(
       { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
@@ -167,9 +163,11 @@ export async function POST(request: Request) {
           tokensOut: usage.output_tokens,
         });
 
+        // Motor de consistência: remove [NOVO_FATO]/[LACUNA] (capturando-os);
         // Camada A: normaliza tipograficamente antes de persistir (o stream ao
         // cliente foi cru, para o efeito de digitação; o salvo é o limpo).
-        const normalized = normalize(fullText, profile);
+        const { clean, novoFatos, lacunas } = stripMarkers(fullText);
+        const normalized = normalize(clean, profile);
 
         const summary = await summarizeChapter(normalized);
         await completeChapter(chapter.id, {
@@ -185,6 +183,18 @@ export async function POST(request: Request) {
           await createVersion(bookId, chapter.id, `Gerado: ${chapter.title}`, {
             contentText: normalized,
             contentJson: textToDoc(normalized),
+          });
+        } catch {}
+        // Atualização de estado (extração síncrona, Haiku): ledgers + snapshot.
+        try {
+          await persistExtraction({
+            bookId,
+            index,
+            cleanText: normalized,
+            bookContext: briefText,
+            novoFatos,
+            lacunas,
+            chapterSummary: summary,
           });
         } catch {}
         try {

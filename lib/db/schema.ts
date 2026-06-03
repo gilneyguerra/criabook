@@ -258,9 +258,14 @@ export const timelineEvents = pgTable("timeline_events", {
   bookId: uuid("book_id")
     .notNull()
     .references(() => books.id, { onDelete: "cascade" }),
-  order: integer("order").notNull().default(0),
+  order: integer("order").notNull().default(0), // storyOrder (tempo da história)
   description: text("description").notNull(),
-  chapterRef: integer("chapter_ref"),
+  chapterRef: integer("chapter_ref"), // narrativeChapter (onde é narrado)
+  // Motor de consistência (REGRAS_CONSISTENCIA) — Event Ledger.
+  participants: jsonb("participants"), // string[] de nomes de personagens
+  location: text("location"),
+  storyTime: text("story_time"), // "Dia 3, manhã" / "Primavera, ano 412"
+  causedBy: uuid("caused_by"), // id de evento anterior (relação causal)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -273,6 +278,135 @@ export const glossaryTerms = pgTable("glossary_terms", {
   definition: text("definition").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+/* ============================================================
+ * Motor de Consistência e Continuidade (REGRAS_CONSISTENCIA)
+ * Memória resgatável: fatos atômicos com proveniência + estado.
+ * ============================================================ */
+
+export const factStatus = pgEnum("fact_status", ["active", "retconned"]);
+export const threadStatus = pgEnum("thread_status", [
+  "open",
+  "resolved",
+  "abandoned",
+]);
+export const issueType = pgEnum("consistency_issue_type", [
+  "hallucination",
+  "repetition",
+  "timeline",
+  "knowledge",
+  "thread",
+]);
+export const issueSeverity = pgEnum("consistency_issue_severity", [
+  "hard",
+  "soft",
+]);
+export const issueStatus = pgEnum("consistency_issue_status", [
+  "open",
+  "resolved",
+  "ignored",
+]);
+
+// Fatos atômicos do cânone, cada um com proveniência (capítulo de origem).
+export const canonFacts = pgTable(
+  "canon_facts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    subject: text("subject").notNull(), // "Lia", "Reino de Aval", "magia"
+    attribute: text("attribute").notNull(), // "cor_dos_olhos", "regra"
+    value: text("value").notNull(),
+    establishedInChapter: integer("established_in_chapter").notNull(),
+    status: factStatus("status").notNull().default("active"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("canon_facts_book_subject_idx").on(t.bookId, t.subject)]
+);
+
+// Quem sabe o quê, e a partir de qual capítulo.
+export const characterKnowledge = pgTable(
+  "character_knowledge",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    character: text("character").notNull(),
+    fact: text("fact").notNull(),
+    learnedInChapter: integer("learned_in_chapter").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("character_knowledge_book_char_idx").on(t.bookId, t.character)]
+);
+
+// Promessas narrativas (armas de Chekhov) abertas e quando fecham.
+export const plotThreads = pgTable(
+  "plot_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    openedInChapter: integer("opened_in_chapter").notNull(),
+    closedInChapter: integer("closed_in_chapter"),
+    status: threadStatus("status").notNull().default("open"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("plot_threads_book_status_idx").on(t.bookId, t.status)]
+);
+
+// "Foto" compacta do mundo ao fim do capítulo N + resumo rolante.
+export const worldStateSnapshots = pgTable(
+  "world_state_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    asOfChapter: integer("as_of_chapter").notNull(),
+    payload: jsonb("payload"), // posições, estados, itens, fios
+    summary: text("summary"), // resumo rolante cumulativo até aqui
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("world_state_book_chapter_idx").on(t.bookId, t.asOfChapter)]
+);
+
+// O que já foi descrito por extenso (anti-redescrição).
+export const describedItems = pgTable(
+  "described_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    subject: text("subject").notNull(), // "aparência de Lia", "torre do norte"
+    describedInChapter: integer("described_in_chapter").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("described_items_book_subject_idx").on(t.bookId, t.subject)]
+);
+
+// Relatório de violações de continuidade (laço detector).
+export const consistencyIssues = pgTable(
+  "consistency_issues",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    chapter: integer("chapter"),
+    type: issueType("type").notNull(),
+    severity: issueSeverity("severity").notNull(),
+    description: text("description").notNull(),
+    conflictsWith: text("conflicts_with"), // fato/evento em conflito + proveniência
+    status: issueStatus("status").notNull().default("open"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("consistency_issues_book_status_idx").on(t.bookId, t.status)]
+);
 
 /* ============================================================
  * RAG — chunks indexados (capítulos + Bíblia) p/ recuperação

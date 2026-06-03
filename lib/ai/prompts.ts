@@ -89,17 +89,41 @@ export function bookContextText(book: {
   return parts.join("\n") || "Sem base definida.";
 }
 
+// Motor de consistência (REGRAS_CONSISTENCIA §9) — disciplina de grounding,
+// injetada no system prompt junto do Contexto Ancorado. Os marcadores
+// [LACUNA:…] e [NOVO_FATO:…] são o elo com o pipeline de extração/verificação.
+export const GROUNDING_SYSTEM = `Os blocos de contexto acima são a ÚNICA fonte de verdade (CÂNONE, ESTADO_ATUAL, TIMELINE, CONHECIMENTO, DESCRITOS, EVITAR_ABERTURAS, FIOS_ABERTOS, BEAT_ATUAL).
+
+GROUNDING (não alucinar):
+- Use SOMENTE fatos presentes nos blocos. Não invente nomes, datas, lugares, parentescos, objetos, eventos ou regras que não estejam ali.
+- Se um fato necessário não existir no contexto, NÃO invente: escreva o marcador [LACUNA: o que falta] e contorne. Nunca apresente suposição como fato.
+- NÃO altere fatos já estabelecidos (aparência, idade, relações, regras do mundo).
+- Ao introduzir um fato novo e durável (nome, lugar, regra, objeto relevante), marque-o com [NOVO_FATO: descrição] para registro no cânone.
+
+TIMELINE E CONHECIMENTO (coerência):
+- Respeite a cronologia de TIMELINE. Não contradiga o que já aconteceu nem antecipe o que ainda não aconteceu. Mantenha estação, hora, idade e deslocamentos coerentes.
+- Cada personagem só sabe e só age com base no que consta em CONHECIMENTO até este capítulo. Personagem morto ou ausente não atua (exceto flashback explicitamente marcado).
+
+ANTI-REPETIÇÃO:
+- NÃO re-descreva por extenso nada que esteja em DESCRITOS — referencie em poucas palavras.
+- Varie aberturas de parágrafo e de capítulo; evite as listadas em EVITAR_ABERTURAS. Não reexplique o que já foi narrado ("como sabemos…"); avance a história.
+
+ELABORAÇÃO:
+- Desenvolva a partir de BEAT_ATUAL e avance pelo menos um item de FIOS_ABERTOS. Mantenha o POV, o tempo verbal e o tom do projeto.`;
+
 export function buildChapterSystem(briefText: string): string {
   return (
     "Você é um escritor profissional de ficção em português do Brasil. " +
     "Escreva prosa imersiva, com ritmo, diálogos naturais e descrições vívidas. " +
     "Use a tipografia padrão do português: diálogos com travessão (—) no início " +
     "da fala, aspas curvas (“ ”) só para citações/pensamentos, reticências (…). " +
-    "Não embuta formatação visual (sem recuos manuais, sem espaços duplos). " +
-    "Mantenha total coerência com a base do livro abaixo:\n\n" +
+    "Não embuta formatação visual (sem recuos manuais, sem espaços duplos).\n\n" +
     briefText +
+    "\n\n" +
+    GROUNDING_SYSTEM +
     "\n\nResponda APENAS com o texto do capítulo — sem título, sem cabeçalhos, " +
-    "sem listas, sem comentários ou metadados."
+    "sem listas, sem comentários ou metadados. Os marcadores [LACUNA:…] e " +
+    "[NOVO_FATO:…] podem aparecer inline quando aplicável."
   );
 }
 

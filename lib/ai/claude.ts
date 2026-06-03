@@ -213,11 +213,23 @@ const CONSISTENCY_TOOL: Anthropic.Tool = {
         items: {
           type: "object",
           properties: {
-            severity: { type: "string", description: "alta | média | baixa" },
+            type: {
+              type: "string",
+              description:
+                "hallucination | repetition | timeline | knowledge | thread",
+            },
+            severity: {
+              type: "string",
+              description: "hard (contradição factual) | soft (estilística)",
+            },
             description: { type: "string" },
+            conflictsWith: {
+              type: "string",
+              description: "fato/evento em conflito + proveniência (ex.: 'cap.1 diz verdes')",
+            },
             location: { type: "string", description: "capítulo/onde ocorre" },
           },
-          required: ["severity", "description"],
+          required: ["type", "severity", "description"],
         },
       },
     },
@@ -225,13 +237,35 @@ const CONSISTENCY_TOOL: Anthropic.Tool = {
   },
 };
 
+const ISSUE_TYPES = [
+  "hallucination",
+  "repetition",
+  "timeline",
+  "knowledge",
+  "thread",
+] as const;
+export type ConsistencyIssueType = (typeof ISSUE_TYPES)[number];
+
 export type ConsistencyIssue = {
-  severity: string;
+  type: ConsistencyIssueType;
+  severity: "hard" | "soft";
   description: string;
+  conflictsWith?: string;
   location?: string;
 };
 
-/** Passe de QA: encontra contradições no manuscrito (usa resumos + Bíblia). */
+function normalizeType(t: string): ConsistencyIssueType {
+  const v = t.toLowerCase().trim();
+  return (ISSUE_TYPES as readonly string[]).includes(v)
+    ? (v as ConsistencyIssueType)
+    : "hallucination";
+}
+
+/**
+ * Passe de QA (laço detector): confronta o manuscrito contra os ledgers
+ * (cânone/timeline/conhecimento/fios) + Bíblia e reporta contradições com
+ * tipo, severidade e proveniência.
+ */
 export async function checkConsistency(
   context: string
 ): Promise<ConsistencyIssue[]> {
@@ -242,11 +276,14 @@ export async function checkConsistency(
     model: MODEL_MAIN,
     max_tokens: 2000,
     system:
-      "Você é um editor de continuidade. Analise o manuscrito (resumos dos " +
-      "capítulos + Bíblia) e encontre contradições: grafia de nome que muda, " +
-      "traço físico alterado, furo na linha do tempo, personagem morto que " +
-      "reaparece, regra do mundo violada, fatos incoerentes. Seja específico e " +
-      "cite onde. Se não houver problemas, retorne uma lista vazia. Em pt-BR.",
+      "Você é um editor de continuidade. Os FATOS DO CÂNONE, TIMELINE, " +
+      "CONHECIMENTO e FIOS abaixo são a fonte de verdade. Compare os RESUMOS dos " +
+      "capítulos contra eles e reporte CONTRADIÇÕES, não impressões: grafia de " +
+      "nome que muda, traço físico alterado, furo de linha do tempo, personagem " +
+      "que age sobre o que ainda não sabe, morto que reaparece, regra do mundo " +
+      "violada, fio aberto nunca pago, repetição. Para cada uma, dê o tipo, a " +
+      "severidade (hard=contradição factual; soft=estilística) e em conflictsWith " +
+      "cite o fato/proveniência conflitante. Sem problemas → lista vazia. Em pt-BR.",
     messages: [{ role: "user", content: context }],
     tools: [CONSISTENCY_TOOL],
     tool_choice: { type: "tool", name: CONSISTENCY_TOOL.name },
@@ -255,14 +292,190 @@ export async function checkConsistency(
   const block = res.content.find((b) => b.type === "tool_use");
   if (!block || block.type !== "tool_use") return [];
   const input = block.input as {
-    issues?: { severity?: string; description?: string; location?: string }[];
+    issues?: {
+      type?: string;
+      severity?: string;
+      description?: string;
+      conflictsWith?: string;
+      location?: string;
+    }[];
   };
   if (!Array.isArray(input.issues)) return [];
   return input.issues.map((i) => ({
-    severity: String(i.severity ?? "média"),
+    type: normalizeType(String(i.type ?? "hallucination")),
+    severity: String(i.severity ?? "soft").toLowerCase() === "hard" ? "hard" : "soft",
     description: String(i.description ?? ""),
+    conflictsWith: i.conflictsWith ? String(i.conflictsWith) : undefined,
     location: i.location ? String(i.location) : undefined,
   }));
+}
+
+/**
+ * Auto-revisão dirigida (§5): reescreve um capítulo corrigindo UMA
+ * inconsistência, mexendo o mínimo possível. Retorna o texto corrigido ou null.
+ */
+export async function reviseChapterForIssue(params: {
+  text: string;
+  description: string;
+  conflictsWith?: string | null;
+}): Promise<string | null> {
+  const anthropic = getAnthropic();
+  if (!anthropic || !params.text.trim()) return null;
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_MAIN,
+      max_tokens: 4000,
+      system:
+        "Você é um editor de continuidade. Reescreva o capítulo corrigindo APENAS " +
+        "a inconsistência indicada, com o MÍNIMO de alterações (preserve enredo, " +
+        "tom, POV, tipografia PT-BR — travessão no diálogo, aspas curvas). " +
+        "Responda só com o texto do capítulo corrigido, sem comentários.",
+      messages: [
+        {
+          role: "user",
+          content:
+            `INCONSISTÊNCIA: ${params.description}\n` +
+            (params.conflictsWith ? `FATO CORRETO (cânone): ${params.conflictsWith}\n` : "") +
+            `\n--- CAPÍTULO ---\n${params.text.slice(0, 16000)}`,
+        },
+      ],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ----------------- Extração de estado pós-geração (§5/§3) ----------------- */
+
+const EXTRACT_TOOL: Anthropic.Tool = {
+  name: "registrar_estado",
+  description:
+    "Registra o estado estruturado extraído do capítulo: fatos do cânone, " +
+    "eventos, conhecimento adquirido, descritos, fios de trama.",
+  input_schema: {
+    type: "object",
+    properties: {
+      facts: {
+        type: "array",
+        description: "Fatos atômicos e DURÁVEIS estabelecidos (não efêmeros).",
+        items: {
+          type: "object",
+          properties: {
+            subject: { type: "string", description: "personagem/lugar/conceito" },
+            attribute: { type: "string", description: "ex.: cor_dos_olhos, regra, parentesco" },
+            value: { type: "string" },
+          },
+          required: ["subject", "attribute", "value"],
+        },
+      },
+      events: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            description: { type: "string" },
+            storyTime: { type: "string", description: "ex.: 'Dia 3, manhã'" },
+            participants: { type: "array", items: { type: "string" } },
+            location: { type: "string" },
+          },
+          required: ["description"],
+        },
+      },
+      knowledge: {
+        type: "array",
+        description: "O que cada personagem passou a saber neste capítulo.",
+        items: {
+          type: "object",
+          properties: {
+            character: { type: "string" },
+            fact: { type: "string" },
+          },
+          required: ["character", "fact"],
+        },
+      },
+      describedSubjects: {
+        type: "array",
+        description: "O que foi descrito por extenso (aparência, ambiente).",
+        items: { type: "string" },
+      },
+      openedThreads: {
+        type: "array",
+        description: "Promessas/perguntas narrativas abertas neste capítulo.",
+        items: { type: "string" },
+      },
+      closedThreads: {
+        type: "array",
+        description: "Fios de trama resolvidos neste capítulo.",
+        items: { type: "string" },
+      },
+    },
+    required: [],
+  },
+};
+
+export type ChapterExtraction = {
+  facts: { subject: string; attribute: string; value: string }[];
+  events: {
+    description: string;
+    storyTime?: string;
+    participants?: string[];
+    location?: string;
+  }[];
+  knowledge: { character: string; fact: string }[];
+  describedSubjects: string[];
+  openedThreads: string[];
+  closedThreads: string[];
+};
+
+const EMPTY_EXTRACTION: ChapterExtraction = {
+  facts: [],
+  events: [],
+  knowledge: [],
+  describedSubjects: [],
+  openedThreads: [],
+  closedThreads: [],
+};
+
+/** Extrai o estado estruturado de um capítulo (Haiku/tool-use). Vazio sem key. */
+export async function extractChapterState(
+  text: string,
+  bookContext: string
+): Promise<ChapterExtraction> {
+  const anthropic = getAnthropic();
+  if (!anthropic || !text.trim()) return EMPTY_EXTRACTION;
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 1500,
+      system:
+        "Você extrai memória estruturada de um capítulo para um motor de " +
+        "consistência. Registre só fatos DURÁVEIS e verificáveis (não detalhes " +
+        "efêmeros). Seja conciso, em pt-BR. Use o contexto do livro para nomes.",
+      messages: [
+        {
+          role: "user",
+          content: `${bookContext}\n\n--- CAPÍTULO ---\n${text.slice(0, 14000)}`,
+        },
+      ],
+      tools: [EXTRACT_TOOL],
+      tool_choice: { type: "tool", name: EXTRACT_TOOL.name },
+    });
+    const block = res.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") return EMPTY_EXTRACTION;
+    const inp = block.input as Partial<ChapterExtraction>;
+    return {
+      facts: Array.isArray(inp.facts) ? inp.facts : [],
+      events: Array.isArray(inp.events) ? inp.events : [],
+      knowledge: Array.isArray(inp.knowledge) ? inp.knowledge : [],
+      describedSubjects: Array.isArray(inp.describedSubjects) ? inp.describedSubjects : [],
+      openedThreads: Array.isArray(inp.openedThreads) ? inp.openedThreads : [],
+      closedThreads: Array.isArray(inp.closedThreads) ? inp.closedThreads : [],
+    };
+  } catch {
+    return EMPTY_EXTRACTION;
+  }
 }
 
 /** Traduz erros conhecidos da IA em mensagens amigáveis (o técnico fica nos logs). */
