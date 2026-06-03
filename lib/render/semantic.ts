@@ -10,6 +10,7 @@
  */
 
 import type { BookLayoutProfile } from "@/lib/layout/profile";
+import { isSceneBreak, isHeading, headingText } from "@/lib/tiptap";
 
 export function escapeHtml(s: string): string {
   return s
@@ -59,13 +60,26 @@ export function chapterToXhtml(
     .map((p) => p.trim())
     .filter(Boolean);
 
+  // Convenção tipográfica: o 1º parágrafo após título, quebra de cena ou
+  // subtítulo NÃO recua (.first); os demais recuam.
+  let afterBreak = true;
   const body = paragraphs
-    .map((p, i) => {
+    .map((p) => {
+      if (isSceneBreak(p)) {
+        afterBreak = true;
+        return `<p class="scene">* * *</p>`;
+      }
+      if (isHeading(p)) {
+        afterBreak = true;
+        return `<h2 class="subchapter">${escapeHtml(headingText(p))}</h2>`;
+      }
       const classes: string[] = [];
-      if (i === 0) classes.push("first");
+      if (afterBreak) {
+        classes.push("first");
+        afterBreak = false;
+      }
       if (isDialogue(p)) classes.push("dialogue");
       const cls = classes.length ? ` class="${classes.join(" ")}"` : "";
-      // Quebras simples dentro do parágrafo viram <br/> (raro em prosa).
       return `<p${cls}>${para(p)}</p>`;
     })
     .join("\n");
@@ -120,6 +134,8 @@ export function epubCss(profile: BookLayoutProfile): string {
     `p.first { text-indent: 0; }`,
     `h1, h2 { font-size: 1.6em; line-height: 1.2; text-indent: 0; margin: 1em 0; }`,
     `h1.chapter-title { margin: 1.5em 0 1em; }`,
+    `h2.subchapter { font-size: 1.25em; margin: 1.4em 0 0.6em; }`,
+    `p.scene { text-align: center; margin: 1.6em 0; letter-spacing: 0.4em; text-indent: 0; }`,
     `blockquote { margin: 1em 1.5em; font-style: italic; }`,
     `img { max-width: 100%; height: auto; }`,
   ].join("\n");

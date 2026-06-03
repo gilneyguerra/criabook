@@ -40,6 +40,7 @@ export default async function WritePage({
       initialBalance={balance}
       wordsPerPage={wpp}
       frontMatterPages={frontMatterPages}
+      paragraphStyle={profile.epub.paragraph}
       initialChapters={chapters.map((c) => ({
         id: c.id,
         index: c.index,

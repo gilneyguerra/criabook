@@ -118,6 +118,18 @@ export function buildChapterSystem(briefText: string): string {
     "Use a tipografia padrão do português: diálogos com travessão (—) no início " +
     "da fala, aspas curvas (“ ”) só para citações/pensamentos, reticências (…). " +
     "Não embuta formatação visual (sem recuos manuais, sem espaços duplos).\n\n" +
+    "PARÁGRAFOS (tipografia de livro):\n" +
+    "- Uma ideia por parágrafo. Comece um NOVO parágrafo quando o foco muda: nova " +
+    "ação, novo assunto, mudança de tempo ou de lugar, ou troca de quem fala.\n" +
+    "- Diálogo: cada fala de um interlocutor diferente é um novo parágrafo, " +
+    "iniciado por travessão (—).\n" +
+    "- Varie o comprimento dos parágrafos (curtos e longos) para criar ritmo; " +
+    "evite blocos uniformes.\n" +
+    "- Ao MUDAR de cena ou de assunto dentro do capítulo, insira uma linha " +
+    "contendo APENAS '* * *' (quebra de cena), com parcimônia. Em não-ficção, " +
+    "use um subtítulo de seção em uma linha iniciada por '## '.\n" +
+    "- Separe parágrafos por UMA linha em branco; o recuo/espaçamento é aplicado " +
+    "na diagramação, não no texto.\n\n" +
     briefText +
     "\n\n" +
     GROUNDING_SYSTEM +

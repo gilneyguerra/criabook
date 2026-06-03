@@ -43,6 +43,7 @@ export function WritingStudio({
   initialChapters,
   wordsPerPage,
   frontMatterPages,
+  paragraphStyle,
 }: {
   bookId: string;
   title: string;
@@ -51,6 +52,7 @@ export function WritingStudio({
   initialChapters: Chapter[];
   wordsPerPage: number;
   frontMatterPages: number;
+  paragraphStyle: "indent" | "spaced";
 }) {
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
   const [activeId, setActiveId] = useState<string | null>(
@@ -97,6 +99,15 @@ export function WritingStudio({
     []
   );
 
+  // Tipografia de parágrafo do editor conforme o Perfil de Layout:
+  // ficção = recuo na 1ª linha sem espaço entre parágrafos; não-ficção = espaço
+  // entre parágrafos sem recuo (o 1º parágrafo nunca recua).
+  const paraClass =
+    paragraphStyle === "spaced"
+      ? "[&_p]:my-0 [&_p]:mb-4 [&_p]:[text-indent:0]"
+      : "[&_p]:my-0 [&_p]:[text-indent:1.6em] [&_p:first-child]:[text-indent:0] [&_p.scene]:[text-indent:0]";
+  const proseClass = `prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh] [&_h2]:mt-6 [&_h2]:mb-2 ${paraClass}`;
+
   const editor = useEditor({
     extensions: [StarterKit],
     editable: true,
@@ -106,8 +117,7 @@ export function WritingStudio({
       : { type: "doc", content: [{ type: "paragraph" }] },
     editorProps: {
       attributes: {
-        class:
-          "prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh]",
+        class: proseClass,
       },
     },
     onUpdate: ({ editor }) => {
