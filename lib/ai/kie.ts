@@ -37,8 +37,12 @@ function buildInput(prompt: string, opts: KieImageOpts): Record<string, unknown>
       style: opts.style ?? "DESIGN",
       expand_prompt: false,
       image_size: opts.imageSize ?? "square_hd",
+      // Anti-texto agressivo: a tipografia é camada editável, a arte é só imagem.
       negative_prompt:
-        "blurry, low detail, watermark, signature, text, lettering, typography, low resolution",
+        "text, words, letters, title, subtitle, caption, typography, font, " +
+        "lettering, handwriting, writing, inscription, label, watermark, " +
+        "signature, numbers, logo, ui, frame, border, blurry, low detail, " +
+        "low resolution",
     };
   }
   // Outros modelos: input genérico.

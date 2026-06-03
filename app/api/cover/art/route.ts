@@ -49,11 +49,14 @@ export async function POST(request: Request) {
 
   const side: "front" | "back" = which === "back" ? "back" : "front";
   const fullPrompt =
-    `Capa de livro de ${book.genre ?? "ficção"}. ${prompt}. ` +
+    `Ilustração de capa de livro de ${book.genre ?? "ficção"}, puramente visual. ` +
+    `${prompt}. ` +
     `${style ? `Estilo: ${style}. ` : ""}` +
     `${palette ? `Paleta: ${palette}. ` : ""}` +
-    `Composição vertical para capa, espaço para o título. ` +
-    `IMPORTANTE: NÃO inclua nenhum texto, letra, número ou tipografia na imagem.`;
+    `Composição vertical, com áreas "limpas" (céu, parede, sombra) onde o título ` +
+    `poderá ser sobreposto depois. ` +
+    `CRÍTICO: arte SEM nenhuma palavra, letra, número, título ou texto — ` +
+    `nenhuma tipografia na imagem.`;
 
   // Capa = retrato; estilo REALISTIC quando o pedido for fotográfico.
   const realistic = /foto|fotogr|photo|realis|cinemat/i.test(`${style} ${prompt}`);

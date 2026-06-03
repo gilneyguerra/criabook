@@ -645,11 +645,43 @@ export async function suggestCoverArt(bookContext: string): Promise<string> {
   }
 }
 
+/** Direção de arte da CONTRA CAPA que complementa a capa frontal. "" sem key. */
+export async function suggestComplementaryArt(
+  frontPrompt: string,
+  style: string,
+  palette: string
+): Promise<string> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return "";
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 200,
+      system:
+        "A capa FRONTAL de um livro mostra a cena descrita pelo usuário. Sugira a " +
+        "cena da CONTRA CAPA que COMPLEMENTE a frontal e CONVERSE com ela: MESMO " +
+        "estilo, paleta e atmosfera, como continuação visual (ex.: outro ângulo da " +
+        "mesma cena, o 'depois', um detalhe ampliado, o reverso do cenário). " +
+        "Puramente visual, SEM texto. UMA frase rica, em pt-BR. Responda só a descrição.",
+      messages: [
+        {
+          role: "user",
+          content: `Capa frontal: ${frontPrompt}\nEstilo: ${style || "—"}\nPaleta: ${palette || "—"}`,
+        },
+      ],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 /* ------------------- Textos comerciais da capa (FERRAMENTA_CAPA) ------------------- */
 
 const COVER_COPY_SYSTEM: Record<"back" | "flapFront" | "bio", string> = {
   back:
-    "Escreva o TEXTO DE APRESENTAÇÃO DA 4ª CAPA. NÃO é sinopse: é peça comercial. " +
+    "Escreva o TEXTO DE APRESENTAÇÃO DA CONTRA CAPA. NÃO é sinopse: é peça comercial. " +
     "3ª pessoa, foco no benefício/transformação que a obra entrega ao leitor. " +
     "3 a 5 parágrafos curtos e persuasivos. pt-BR. Responda só o texto.",
   flapFront:
@@ -662,7 +694,7 @@ const COVER_COPY_SYSTEM: Record<"back" | "flapFront" | "bio", string> = {
     "refine-a mantendo os fatos. Responda só o texto.",
 };
 
-/** Gera um texto comercial da capa (4ª capa, orelha ou bio). "" sem API key. */
+/** Gera um texto comercial da capa (contra capa, orelha ou bio). "" sem API key. */
 export async function generateCoverText(
   kind: "back" | "flapFront" | "bio",
   bookContext: string
@@ -685,7 +717,7 @@ export async function generateCoverText(
 
 const SOCIAL_TOOL: Anthropic.Tool = {
   name: "prova_social",
-  description: "Rascunhos de depoimentos curtos (prova social) para a 4ª capa.",
+  description: "Rascunhos de depoimentos curtos (prova social) para a contra capa.",
   input_schema: {
     type: "object",
     properties: {
@@ -716,7 +748,7 @@ export async function generateSocialProof(
       model: MODEL_FAST,
       max_tokens: 600,
       system:
-        "Rascunhe 1 a 2 depoimentos curtos de prova social para a 4ª capa, no tom " +
+        "Rascunhe 1 a 2 depoimentos curtos de prova social para a contra capa, no tom " +
         "do livro. São RASCUNHOS a confirmar pelo autor (não atribua a pessoas reais). " +
         "pt-BR.",
       messages: [{ role: "user", content: bookContext }],

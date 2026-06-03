@@ -3,8 +3,13 @@
 import { useMemo, useState } from "react";
 import { Sparkles, Loader2, Save, ImageIcon, Download, Coins } from "lucide-react";
 
-import { saveCover, generateCoverTextAction, suggestArtAction } from "../actions";
-import { CoverPreview } from "./cover-preview";
+import {
+  saveCover,
+  generateCoverTextAction,
+  suggestArtAction,
+  suggestBackArtAction,
+} from "../actions";
+import { CoverPreview, type PreviewView } from "./cover-preview";
 import { composeCoverBlob, type CoverConfig, type CoverLayout } from "@/lib/cover/compose";
 import { estimatePages, spineWidthMm, bindingAllowsFlaps } from "@/lib/cover/spine";
 import { NextStep } from "../../_components/next-step";
@@ -36,7 +41,9 @@ export function CoverDesigner({
 }) {
   const i = initial;
   const [frontArtUrl, setFrontArtUrl] = useState<string | null>((i.frontArtUrl as string) ?? null);
+  const [backArtUrl, setBackArtUrl] = useState<string | null>((i.backArtUrl as string) ?? null);
   const [artPrompt, setArtPrompt] = useState((i.artPrompt as string) ?? "");
+  const [backArtPrompt, setBackArtPrompt] = useState("");
   const [style, setStyle] = useState((i.style as string) ?? "");
   const [palette, setPalette] = useState(
     ((i.palette as { description?: string })?.description) ?? ""
@@ -59,10 +66,11 @@ export function CoverDesigner({
   );
   const [flapFront, setFlapFront] = useState((i.flapFront as string) ?? "");
   const [flapBio, setFlapBio] = useState((i.flapBio as string) ?? "");
+  const [authorPhotoUrl] = useState<string | null>((i.authorPhotoUrl as string) ?? null);
   const [target, setTarget] = useState<"ebook" | "print">(((i.target as "ebook" | "print") ?? "ebook"));
   const [binding, setBinding] = useState((i.binding as string) ?? "kdp_brochura");
 
-  const [view, setView] = useState<"front" | "back">("front");
+  const [view, setView] = useState<PreviewView>("front");
   const [balance, setBalance] = useState(initialBalance);
   const [arting, setArting] = useState(false);
   const [suggestingArt, setSuggestingArt] = useState(false);
@@ -94,9 +102,23 @@ export function CoverDesigner({
     setMsg(null);
   }
 
+  // A arte é gerada para o lado SELECIONADO na pré-visualização.
+  const activeSide: "front" | "back" = view === "back" ? "back" : "front";
+  const activePrompt = activeSide === "back" ? backArtPrompt : artPrompt;
+  const setActivePrompt = activeSide === "back" ? setBackArtPrompt : setArtPrompt;
+
+  async function autoSuggestBack(frontPrompt: string) {
+    if (backArtPrompt.trim()) return; // não sobrescreve o que o usuário escreveu
+    const res = (await suggestBackArtAction(bookId, frontPrompt, style, palette)) as {
+      ok?: boolean;
+      text?: string;
+    };
+    if (res?.ok && res.text) setBackArtPrompt(res.text);
+  }
+
   async function genArt() {
-    if (!artPrompt.trim()) {
-      setMsg("Descreva a imagem principal primeiro (ou use ✨ Sugerir).");
+    if (!activePrompt.trim()) {
+      setMsg("Descreva a imagem primeiro (ou use ✨ Sugerir).");
       return;
     }
     setArting(true);
@@ -105,11 +127,15 @@ export function CoverDesigner({
       const r = await fetch("/api/cover/art", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, prompt: artPrompt, style, palette, which: "front" }),
+        body: JSON.stringify({ bookId, prompt: activePrompt, style, palette, which: activeSide }),
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.url) {
-        setFrontArtUrl(d.url as string);
+        if (activeSide === "back") setBackArtUrl(d.url as string);
+        else {
+          setFrontArtUrl(d.url as string);
+          void autoSuggestBack(activePrompt); // já propõe a cena da contra capa
+        }
         if (typeof d.balance === "number") setBalance(d.balance);
       } else {
         setMsg(d.error ?? "Falha ao gerar a arte.");
@@ -124,14 +150,25 @@ export function CoverDesigner({
   async function suggestArt() {
     setSuggestingArt(true);
     setMsg(null);
-    const res = (await suggestArtAction(bookId)) as {
-      ok?: boolean;
-      error?: string;
-      text?: string;
-    };
-    setSuggestingArt(false);
-    if (res?.ok && res.text) setArtPrompt(res.text);
-    else setMsg(res?.error ?? "Não foi possível sugerir.");
+    if (activeSide === "back") {
+      const res = (await suggestBackArtAction(bookId, artPrompt, style, palette)) as {
+        ok?: boolean;
+        error?: string;
+        text?: string;
+      };
+      setSuggestingArt(false);
+      if (res?.ok && res.text) setBackArtPrompt(res.text);
+      else setMsg(res?.error ?? "Não foi possível sugerir.");
+    } else {
+      const res = (await suggestArtAction(bookId)) as {
+        ok?: boolean;
+        error?: string;
+        text?: string;
+      };
+      setSuggestingArt(false);
+      if (res?.ok && res.text) setArtPrompt(res.text);
+      else setMsg(res?.error ?? "Não foi possível sugerir.");
+    }
   }
 
   async function genText(kind: "back" | "flapFront" | "bio" | "social") {
@@ -158,6 +195,8 @@ export function CoverDesigner({
     setSaving(true);
     const res = await saveCover(bookId, {
       frontArtUrl,
+      backArtUrl,
+      authorPhotoUrl,
       artPrompt,
       style: style || null,
       palette: palette ? { description: palette } : null,
@@ -261,23 +300,32 @@ export function CoverDesigner({
               ))}
             </div>
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Imagem principal</Label>
+              <Label className="text-xs">
+                Imagem · {activeSide === "back" ? "Contra capa" : "Capa"}
+              </Label>
               <button type="button" onClick={suggestArt} disabled={suggestingArt}
                 className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50">
                 {suggestingArt ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
                 Sugerir
               </button>
             </div>
-            <textarea rows={2} value={artPrompt} onChange={(e) => setArtPrompt(e.target.value)}
-              placeholder="ex.: guerreira solitária sob chuva de néon, plano americano" className={areaCls} />
+            <textarea rows={2} value={activePrompt} onChange={(e) => setActivePrompt(e.target.value)}
+              placeholder={activeSide === "back"
+                ? "cena que complementa a capa (gere a capa primeiro para auto-sugerir)"
+                : "ex.: guerreira solitária sob chuva de néon, plano americano"}
+              className={areaCls} />
             <div className="grid grid-cols-2 gap-2">
               <Input value={style} onChange={(e) => setStyle(e.target.value)} placeholder="Estilo" />
               <Input value={palette} onChange={(e) => setPalette(e.target.value)} placeholder="Paleta" />
             </div>
             <Button size="sm" onClick={genArt} disabled={busy}>
               {arting ? <Loader2 className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
-              Gerar arte
+              Gerar arte da {activeSide === "back" ? "contra capa" : "capa"}
             </Button>
+            <p className="text-xs text-muted-foreground">
+              A arte sai SEM texto (título/autor são camada por cima). Troque o
+              lado na pré-visualização → a contra capa complementa a capa.
+            </p>
           </section>
 
           {/* Camada 2 — Tipografia */}
@@ -336,7 +384,7 @@ export function CoverDesigner({
           <section className="flex flex-col gap-3 rounded-xl border p-5">
             <h2 className="font-medium">Textos comerciais (Camada 3)</h2>
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Apresentação da 4ª capa (não é sinopse)</Label>
+              <Label className="text-xs">Apresentação da contra capa (não é sinopse)</Label>
               {genBtn("back")}
             </div>
             <textarea rows={4} value={backText} onChange={(e) => setBackText(e.target.value)} className={areaCls} />
@@ -373,29 +421,47 @@ export function CoverDesigner({
                 </button>
               ))}
             </div>
-            <div className="flex gap-1 text-sm">
-              {(["front", "back"] as const).map((v) => (
+            <div className="flex flex-wrap gap-1 text-sm">
+              {([
+                ["front", "Capa"],
+                ["back", "Contra capa"],
+                ["spine", "Lombada"],
+                ["flaps", "Orelhas"],
+              ] as const).map(([v, label]) => (
                 <button key={v} type="button" onClick={() => setView(v)}
                   className={`rounded-full border px-3 py-1 ${view === v ? "border-indigo-500 text-indigo-600" : "text-muted-foreground"}`}>
-                  {v === "front" ? "Capa" : "4ª capa"}
+                  {label}
                 </button>
               ))}
             </div>
           </div>
-          <CoverPreview cfg={cfg} view={view} backText={backText} socialProof={socialProof} spineMm={spineMm} target={target} />
-          {target === "print" && (
-            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-              <Label className="text-xs">Acabamento</Label>
-              <select value={binding} onChange={(e) => setBinding(e.target.value)} className={inputCls}>
-                <option value="kdp_brochura">Brochura KDP (sem orelhas)</option>
-                <option value="brochura_orelhas">Brochura com orelhas</option>
-                <option value="capa_dura">Capa dura</option>
-              </select>
-              <p className="mt-2">
-                {bindingAllowsFlaps(binding) ? "Orelhas habilitadas." : "Orelhas desabilitadas neste acabamento."}
-              </p>
-            </div>
-          )}
+          <CoverPreview
+            cfg={cfg}
+            view={view}
+            backArtUrl={backArtUrl}
+            backText={backText}
+            socialProof={socialProof}
+            flapFront={flapFront}
+            flapBio={flapBio}
+            authorPhotoUrl={authorPhotoUrl}
+            flapsAllowed={bindingAllowsFlaps(binding)}
+            spineText={spineText}
+            spineMm={spineMm}
+            target={target}
+          />
+          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            <Label className="text-xs">Acabamento (impressão)</Label>
+            <select value={binding} onChange={(e) => setBinding(e.target.value)} className={inputCls}>
+              <option value="kdp_brochura">Brochura KDP (sem orelhas)</option>
+              <option value="brochura_orelhas">Brochura com orelhas</option>
+              <option value="capa_dura">Capa dura</option>
+            </select>
+            <p className="mt-2">
+              {bindingAllowsFlaps(binding)
+                ? "Orelhas habilitadas — veja a aba “Orelhas”."
+                : "Sem orelhas neste acabamento (a bio vai para a contra capa / “Sobre o autor”)."}
+            </p>
+          </div>
         </div>
       </div>
 
