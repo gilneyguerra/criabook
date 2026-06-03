@@ -18,6 +18,7 @@ import {
   generateSocialProof,
   suggestCoverArt,
   suggestComplementaryArt,
+  suggestCoverStyle,
 } from "@/lib/ai/claude";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import type { Matter } from "@/lib/matter";
@@ -94,6 +95,17 @@ export async function suggestArtAction(bookId: string) {
   const text = await suggestCoverArt(await coverContext(bookId, book, false));
   if (!text) return { error: "Não foi possível sugerir agora." };
   return { ok: true, text };
+}
+
+/** Sugere estilo/paleta/cores da capa a partir do livro. */
+export async function suggestStyleAction(bookId: string) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return { error: "Não autenticado." };
+  const book = await getBookForUser(bookId, session.user.id).catch(() => null);
+  if (!book) return { error: "Livro não encontrado." };
+  const s = await suggestCoverStyle(await coverContext(bookId, book, false));
+  if (!s) return { error: "Não foi possível sugerir agora." };
+  return { ok: true, ...s };
 }
 
 /** Sugere a cena da CONTRA CAPA que complementa a capa frontal. */

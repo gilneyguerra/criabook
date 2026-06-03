@@ -1,16 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Sparkles, Loader2, Save, ImageIcon, Download, Coins } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Sparkles, Loader2, Save, ImageIcon, Download, Coins, Palette } from "lucide-react";
 
 import {
   saveCover,
   generateCoverTextAction,
   suggestArtAction,
   suggestBackArtAction,
+  suggestStyleAction,
 } from "../actions";
-import { CoverPreview, type PreviewView } from "./cover-preview";
-import { composeCoverBlob, type CoverConfig, type CoverLayout } from "@/lib/cover/compose";
+import { CoverPreview, type PreviewView, type GenKind } from "./cover-preview";
+import {
+  composeCoverBlob,
+  type CoverConfig,
+  type CoverLayout,
+  type CoverBoxes,
+  type BoxKey,
+  type TextBoxCfg,
+} from "@/lib/cover/compose";
+import { FONT_OPTIONS, googleFontsHref } from "@/lib/cover/fonts";
 import { estimatePages, spineWidthMm, bindingAllowsFlaps } from "@/lib/cover/spine";
 import { NextStep } from "../../_components/next-step";
 import { Button } from "@/components/ui/button";
@@ -23,10 +32,17 @@ const GENRE_PRESETS: Record<string, { style: string; palette: string; layout: Co
   Thriller: { style: "fotográfico, alto contraste, sombrio", palette: "preto, vermelho, cinza", layout: { overlay: 0.4, background: "#0a0a0a", titleColor: "#ffffff" } },
   Romance: { style: "ilustrado, tons quentes, suave", palette: "rosa, dourado, creme", layout: { overlay: 0.15, background: "#3a1f2b", titleColor: "#ffffff" } },
   Fantasia: { style: "pictórico, épico, denso", palette: "azul profundo, dourado", layout: { overlay: 0.25, background: "#10162e", titleColor: "#ffffff" } },
+  Terror: { style: "sombrio, granulado, inquietante", palette: "preto, vermelho-sangue, cinza", layout: { overlay: 0.45, background: "#0a0606", titleColor: "#f5f5f5" } },
+  "Ficção científica": { style: "futurista, neon, cinematográfico", palette: "azul-elétrico, ciano, violeta", layout: { overlay: 0.3, background: "#06101f", titleColor: "#dff6ff" } },
+  Aventura: { style: "épico, vibrante, dinâmico", palette: "âmbar, verde, terracota", layout: { overlay: 0.25, background: "#1c2410", titleColor: "#fff7e6" } },
+  Histórico: { style: "clássico, pictórico, texturizado", palette: "sépia, dourado envelhecido, vinho", layout: { overlay: 0.2, background: "#211a12", titleColor: "#f3e7cf" } },
+  Drama: { style: "intimista, suave, melancólico", palette: "tons terrosos, azul-acinzentado", layout: { overlay: 0.2, background: "#1b1f24", titleColor: "#f0f0f0" } },
+  Infantojuvenil: { style: "ilustrado lúdico, colorido, amigável", palette: "cores vivas e alegres", layout: { overlay: 0.1, background: "#fdf6e3", titleColor: "#22335a" } },
+  Poesia: { style: "minimalista, abstrato, delicado", palette: "neutros + um acento", layout: { overlay: 0.12, background: "#f4f1ea", titleColor: "#2a2a2a" } },
+  Autoajuda: { style: "limpo, otimista, geométrico", palette: "branco, azul, laranja", layout: { overlay: 0.08, background: "#ffffff", titleColor: "#10233f" } },
+  Biografia: { style: "elegante, sóbrio, retrato", palette: "neutros profundos + dourado", layout: { overlay: 0.25, background: "#15171c", titleColor: "#f2e6cc" } },
   "Não-ficção": { style: "minimalista, limpo, geométrico", palette: "branco, azul, um acento", layout: { overlay: 0.1, background: "#f4f4f0", titleColor: "#10162e" } },
 };
-
-const FONTS = ["Georgia, serif", "'Times New Roman', serif", "Helvetica, Arial, sans-serif", "'Courier New', monospace", "Garamond, serif"];
 
 export function CoverDesigner({
   bookId,
@@ -53,13 +69,19 @@ export function CoverDesigner({
   const [authorName, setAuthorName] = useState((i.authorName as string) ?? "");
   const [highlight, setHighlight] = useState((i.highlight as string) ?? "");
   const [spineText, setSpineText] = useState((i.spineText as string) ?? "");
-  const [fontDisplay, setFontDisplay] = useState((i.fontDisplay as string) ?? FONTS[0]);
-  const [fontText, setFontText] = useState((i.fontText as string) ?? FONTS[0]);
-  const [layout, setLayout] = useState<CoverLayout>(
+  const [fontDisplay, setFontDisplay] = useState((i.fontDisplay as string) ?? FONT_OPTIONS[0].css);
+  const [fontText, setFontText] = useState((i.fontText as string) ?? FONT_OPTIONS[4].css);
+  const initLayout =
     i.layout && typeof i.layout === "object"
-      ? (i.layout as CoverLayout)
-      : { titleColor: "#ffffff", authorColor: "#f0e9da", titlePos: "top", titleScale: 1, overlay: 0.25, background: "#15131f" }
-  );
+      ? (i.layout as CoverLayout & { boxes?: CoverBoxes })
+      : ({} as CoverLayout & { boxes?: CoverBoxes });
+  const [layout, setLayout] = useState<CoverLayout>({
+    titleColor: initLayout.titleColor ?? "#ffffff",
+    authorColor: initLayout.authorColor ?? "#f0e9da",
+    overlay: initLayout.overlay ?? 0.25,
+    background: initLayout.background ?? "#15131f",
+  });
+  const [boxes, setBoxes] = useState<CoverBoxes>(initLayout.boxes ?? {});
   const [backText, setBackText] = useState((i.backText as string) ?? "");
   const [socialProof, setSocialProof] = useState<SocialItem[]>(
     Array.isArray(i.socialProof) ? (i.socialProof as SocialItem[]) : []
@@ -74,6 +96,7 @@ export function CoverDesigner({
   const [balance, setBalance] = useState(initialBalance);
   const [arting, setArting] = useState(false);
   const [suggestingArt, setSuggestingArt] = useState(false);
+  const [suggestingStyle, setSuggestingStyle] = useState(false);
   const [genKind, setGenKind] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -83,10 +106,47 @@ export function CoverDesigner({
     setLayout((l) => ({ ...l, ...patch }));
   }
 
+  // Carrega o catálogo do Google Fonts uma vez (para preview e canvas).
+  useEffect(() => {
+    const id = "criabook-cover-fonts";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = googleFontsHref();
+    document.head.appendChild(link);
+  }, []);
+
   const cfg: CoverConfig = useMemo(
-    () => ({ frontArtUrl, title, subtitle, authorName, highlight, fontDisplay, fontText, layout }),
-    [frontArtUrl, title, subtitle, authorName, highlight, fontDisplay, fontText, layout]
+    () => ({ frontArtUrl, title, subtitle, authorName, highlight, fontDisplay, fontText, layout, boxes }),
+    [frontArtUrl, title, subtitle, authorName, highlight, fontDisplay, fontText, layout, boxes]
   );
+
+  function onBox(key: BoxKey, box: TextBoxCfg) {
+    setBoxes((b) => ({ ...b, [key]: box }));
+  }
+
+  async function suggestStyle() {
+    setSuggestingStyle(true);
+    setMsg(null);
+    const res = (await suggestStyleAction(bookId)) as {
+      ok?: boolean;
+      error?: string;
+      style?: string;
+      palette?: string;
+      background?: string;
+      titleColor?: string;
+    };
+    setSuggestingStyle(false);
+    if (res?.ok) {
+      if (res.style) setStyle(res.style);
+      if (res.palette) setPalette(res.palette);
+      setL({
+        ...(res.background ? { background: res.background } : {}),
+        ...(res.titleColor ? { titleColor: res.titleColor } : {}),
+      });
+    } else setMsg(res?.error ?? "Não foi possível sugerir o estilo.");
+  }
 
   const spineMm = useMemo(
     () => spineWidthMm(estimatePages(totalWords), "white"),
@@ -207,7 +267,7 @@ export function CoverDesigner({
       spineText: spineText || null,
       fontDisplay,
       fontText,
-      layout,
+      layout: { ...layout, boxes },
       backText: backText || null,
       socialProof,
       flapFront: flapFront || null,
@@ -242,7 +302,7 @@ export function CoverDesigner({
     setMsg(r.ok && d.url ? "Capa exportada! Já vale para o EPUB e o Dashboard." : d.error ?? "Falha ao exportar.");
   }
 
-  const busy = arting || saving || exporting || genKind !== null || suggestingArt;
+  const busy = arting || saving || exporting || genKind !== null || suggestingArt || suggestingStyle;
   const inputCls = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
   const areaCls = "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
@@ -291,13 +351,18 @@ export function CoverDesigner({
           {/* Camada 1 — Arte */}
           <section className="flex flex-col gap-3 rounded-xl border p-5">
             <h2 className="font-medium">Arte (Camada 1)</h2>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               {Object.keys(GENRE_PRESETS).map((g) => (
                 <button key={g} type="button" onClick={() => applyPreset(g)}
                   className="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground hover:border-indigo-500/50 hover:text-foreground">
                   {g}
                 </button>
               ))}
+              <button type="button" onClick={suggestStyle} disabled={suggestingStyle}
+                className="inline-flex items-center gap-1 rounded-full border border-indigo-500/40 px-2.5 py-0.5 text-xs text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-50">
+                {suggestingStyle ? <Loader2 className="size-3 animate-spin" /> : <Palette className="size-3" />}
+                Sugerir estilo (IA)
+              </button>
             </div>
             <div className="flex items-center justify-between">
               <Label className="text-xs">
@@ -342,24 +407,16 @@ export function CoverDesigner({
               <div>
                 <Label className="text-xs">Fonte do título</Label>
                 <select value={fontDisplay} onChange={(e) => setFontDisplay(e.target.value)} className={inputCls}>
-                  {FONTS.map((f) => <option key={f} value={f}>{f.split(",")[0]}</option>)}
+                  {FONT_OPTIONS.map((f) => <option key={f.family} value={f.css}>{f.label}</option>)}
                 </select>
               </div>
               <div>
                 <Label className="text-xs">Fonte dos textos</Label>
                 <select value={fontText} onChange={(e) => setFontText(e.target.value)} className={inputCls}>
-                  {FONTS.map((f) => <option key={f} value={f}>{f.split(",")[0]}</option>)}
+                  {FONT_OPTIONS.map((f) => <option key={f.family} value={f.css}>{f.label}</option>)}
                 </select>
               </div>
-              <div>
-                <Label className="text-xs">Posição do título</Label>
-                <select value={layout.titlePos ?? "top"} onChange={(e) => setL({ titlePos: e.target.value as CoverLayout["titlePos"] })} className={inputCls}>
-                  <option value="top">Topo</option>
-                  <option value="center">Centro</option>
-                  <option value="bottom">Base</option>
-                </select>
-              </div>
-              <div className="flex items-end gap-2">
+              <div className="col-span-2 flex items-end gap-2">
                 <div className="flex-1">
                   <Label className="text-xs">Cor do título</Label>
                   <input type="color" value={layout.titleColor ?? "#ffffff"} onChange={(e) => setL({ titleColor: e.target.value })} className="h-9 w-full rounded-md border" />
@@ -370,14 +427,9 @@ export function CoverDesigner({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-xs">Tamanho do título: {(layout.titleScale ?? 1).toFixed(1)}
-                <input type="range" min={0.6} max={1.6} step={0.1} value={layout.titleScale ?? 1} onChange={(e) => setL({ titleScale: Number(e.target.value) })} className="w-full" />
-              </label>
-              <label className="text-xs">Escurecer arte: {Math.round((layout.overlay ?? 0.25) * 100)}%
-                <input type="range" min={0} max={0.7} step={0.05} value={layout.overlay ?? 0.25} onChange={(e) => setL({ overlay: Number(e.target.value) })} className="w-full" />
-              </label>
-            </div>
+            <label className="text-xs">Escurecer arte (legibilidade): {Math.round((layout.overlay ?? 0.25) * 100)}%
+              <input type="range" min={0} max={0.7} step={0.05} value={layout.overlay ?? 0.25} onChange={(e) => setL({ overlay: Number(e.target.value) })} className="w-full" />
+            </label>
           </section>
 
           {/* Camada 3 — Textos */}
@@ -438,6 +490,8 @@ export function CoverDesigner({
           <CoverPreview
             cfg={cfg}
             view={view}
+            boxes={boxes}
+            onBoxChange={onBox}
             backArtUrl={backArtUrl}
             backText={backText}
             socialProof={socialProof}
@@ -448,6 +502,8 @@ export function CoverDesigner({
             spineText={spineText}
             spineMm={spineMm}
             target={target}
+            onGen={(k: GenKind) => genText(k)}
+            genKind={genKind}
           />
           <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
             <Label className="text-xs">Acabamento (impressão)</Label>

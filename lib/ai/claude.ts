@@ -645,6 +645,59 @@ export async function suggestCoverArt(bookContext: string): Promise<string> {
   }
 }
 
+const STYLE_TOOL: Anthropic.Tool = {
+  name: "sugerir_estilo_capa",
+  description: "Sugere estilo visual, paleta e cores de capa coerentes com o livro.",
+  input_schema: {
+    type: "object",
+    properties: {
+      style: { type: "string", description: "ex.: 'fotográfico sombrio', 'pictórico épico'" },
+      palette: { type: "string", description: "cores dominantes + acento" },
+      background: { type: "string", description: "cor de fundo hex, ex.: #10162e" },
+      titleColor: { type: "string", description: "cor do título hex" },
+    },
+    required: ["style", "palette"],
+  },
+};
+
+export type CoverStyle = {
+  style: string;
+  palette: string;
+  background?: string;
+  titleColor?: string;
+};
+
+/** Sugere estilo/paleta/cores de capa a partir do livro (gênero/tom). */
+export async function suggestCoverStyle(bookContext: string): Promise<CoverStyle | null> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return null;
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 400,
+      system:
+        "Você é diretor de arte de capas. A partir do livro (gênero, tom, logline), " +
+        "proponha um estilo visual, uma paleta e cores (fundo/título em hex) que " +
+        "vendam o livro na estante. Seja específico ao gênero, em pt-BR.",
+      messages: [{ role: "user", content: bookContext }],
+      tools: [STYLE_TOOL],
+      tool_choice: { type: "tool", name: STYLE_TOOL.name },
+    });
+    const block = res.content.find((b) => b.type === "tool_use");
+    if (!block || block.type !== "tool_use") return null;
+    const inp = block.input as Partial<CoverStyle>;
+    if (!inp.style || !inp.palette) return null;
+    return {
+      style: String(inp.style),
+      palette: String(inp.palette),
+      background: inp.background ? String(inp.background) : undefined,
+      titleColor: inp.titleColor ? String(inp.titleColor) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Direção de arte da CONTRA CAPA que complementa a capa frontal. "" sem key. */
 export async function suggestComplementaryArt(
   frontPrompt: string,

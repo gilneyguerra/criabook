@@ -48,15 +48,15 @@ export async function POST(request: Request) {
   }
 
   const side: "front" | "back" = which === "back" ? "back" : "front";
+  // IMPORTANTE: NÃO mencionar "capa de livro"/"título" — isso faz o modelo
+  // desenhar texto. Descrever apenas como ilustração/cena vertical.
   const fullPrompt =
-    `Ilustração de capa de livro de ${book.genre ?? "ficção"}, puramente visual. ` +
-    `${prompt}. ` +
+    `Ilustração vertical, puramente visual, sem qualquer texto. ${prompt}. ` +
     `${style ? `Estilo: ${style}. ` : ""}` +
-    `${palette ? `Paleta: ${palette}. ` : ""}` +
-    `Composição vertical, com áreas "limpas" (céu, parede, sombra) onde o título ` +
-    `poderá ser sobreposto depois. ` +
-    `CRÍTICO: arte SEM nenhuma palavra, letra, número, título ou texto — ` +
-    `nenhuma tipografia na imagem.`;
+    `${palette ? `Paleta de cores: ${palette}. ` : ""}` +
+    `Cena artística limpa, com áreas de respiro (céu, parede, névoa, sombra). ` +
+    `Proibido: qualquer palavra, letra, número, título, legenda, assinatura ou ` +
+    `tipografia. Apenas imagem.`;
 
   // Capa = retrato; estilo REALISTIC quando o pedido for fotográfico.
   const realistic = /foto|fotogr|photo|realis|cinemat/i.test(`${style} ${prompt}`);
