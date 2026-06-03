@@ -18,7 +18,7 @@ import {
 import { bookContextText } from "@/lib/ai/prompts";
 import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
 import { textToDoc, wordCount } from "@/lib/tiptap";
-import { retrieveContext, summarizeChapter, indexChapter } from "@/lib/ai/rag";
+import { summarizeChapter, indexChapter } from "@/lib/ai/rag";
 import { normalize } from "@/lib/text/normalizer";
 import { getLayoutProfile } from "@/lib/layout/profile";
 import { buildAnchoredContext } from "@/lib/generate/context";
@@ -34,7 +34,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const { bookId, mode, context } = await request.json().catch(() => ({}));
+  const { bookId, mode, context, index: reqIndex } = await request
+    .json()
+    .catch(() => ({}));
   const book = await getBookForUser(String(bookId), session.user.id).catch(
     () => null
   );
@@ -73,15 +75,26 @@ export async function POST(request: Request) {
 
   /* ---------- Modo: continuar o capítulo atual ---------- */
   if (mode === "continue") {
-    const ctx = typeof context === "string" ? context.slice(-3000) : "";
-    const retrieved = await retrieveContext(bookId, ctx || briefText, 4);
-    const fullCtx = [
-      retrieved.length ? `Trechos relevantes:\n${retrieved.join("\n---\n")}` : "",
-      ctx,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const stream = createContinueStream({ briefText, context: fullCtx });
+    // Cauda REAL do capítulo atual (só ela emenda a continuação) — NUNCA RAG.
+    const ctx = typeof context === "string" ? context.slice(-1800) : "";
+    const existingForCtx = await getChapters(bookId);
+    const curIndex =
+      typeof reqIndex === "number" && reqIndex > 0
+        ? reqIndex
+        : Math.max(1, existingForCtx.length);
+    // Contexto Ancorado = estado da história (cânone/timeline/conhecimento/
+    // resumo rolante/beat) para AVANÇAR a trama, não repeti-la.
+    const { briefText: anchoredBrief } = await buildAnchoredContext(
+      bookId,
+      book,
+      curIndex,
+      existingForCtx
+    );
+    const stream = createContinueStream({
+      briefText: anchoredBrief,
+      context: ctx,
+      index: curIndex,
+    });
     if (!stream) {
       return NextResponse.json(
         { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },

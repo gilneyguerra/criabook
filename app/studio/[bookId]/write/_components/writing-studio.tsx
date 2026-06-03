@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -17,9 +17,13 @@ import {
   ArrowRight,
   ImageIcon,
   Eraser,
+  ChevronRight,
+  ChevronDown,
+  FileText,
 } from "lucide-react";
 
 import { textToDoc, docToText, wordCount } from "@/lib/tiptap";
+import { paginateBook, totalBodyPages } from "@/lib/pagination";
 import { saveDraft, loadDraft, clearDraft, type Draft } from "@/lib/draft";
 import { saveChapter, snapshotChapter, normalizeChapter } from "../actions";
 import { Button } from "@/components/ui/button";
@@ -37,15 +41,22 @@ export function WritingStudio({
   pageTarget,
   initialBalance,
   initialChapters,
+  wordsPerPage,
+  frontMatterPages,
 }: {
   bookId: string;
   title: string;
   pageTarget: number;
   initialBalance: number;
   initialChapters: Chapter[];
+  wordsPerPage: number;
+  frontMatterPages: number;
 }) {
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
   const [activeId, setActiveId] = useState<string | null>(
+    initialChapters[0]?.id ?? null
+  );
+  const [expandedId, setExpandedId] = useState<string | null>(
     initialChapters[0]?.id ?? null
   );
   const [generating, setGenerating] = useState(false);
@@ -148,6 +159,25 @@ export function WritingStudio({
 
   const totalWords = chapters.reduce((acc, c) => acc + wordCount(c.contentText), 0);
   const targetWords = pageTarget * 280;
+
+  // Páginas derivadas (recalcula ao gerar/editar → "vira a página" sozinho).
+  const pagination = useMemo(
+    () => paginateBook(chapters, wordsPerPage, frontMatterPages),
+    [chapters, wordsPerPage, frontMatterPages]
+  );
+  const bookPages = totalBodyPages(pagination);
+
+  function goToPage(chapterId: string, wordStart: number) {
+    if (chapterId !== activeIdRef.current) setActiveId(chapterId);
+    const ch = chaptersRef.current.find((c) => c.id === chapterId);
+    const total = ch ? wordCount(ch.contentText) : 0;
+    setTimeout(() => {
+      const el = scrollRef.current;
+      if (!el || !total) return;
+      const frac = Math.min(0.98, wordStart / total);
+      el.scrollTop = frac * Math.max(0, el.scrollHeight - el.clientHeight);
+    }, 60);
+  }
 
   function scrollToBottom() {
     const el = scrollRef.current;
@@ -289,12 +319,18 @@ export function WritingStudio({
     setInsufficient(false);
     setRecovery(null);
     const baseText = docToText(editor.getJSON());
+    const activeIndex = chaptersRef.current.find((c) => c.id === id)?.index;
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, mode: "continue", context: baseText.slice(-3000) }),
+        body: JSON.stringify({
+          bookId,
+          mode: "continue",
+          context: baseText.slice(-3000),
+          index: activeIndex,
+        }),
       });
       if (res.status === 402) {
         setInsufficient(true);
@@ -476,25 +512,71 @@ export function WritingStudio({
               Nenhum capítulo ainda. Gere o primeiro.
             </p>
           )}
-          {chapters.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setActiveId(c.id)}
-              disabled={busy}
-              className={`block w-full truncate rounded-md px-2 py-1.5 text-left text-sm ${
-                activeId === c.id
-                  ? "bg-indigo-500/15 text-indigo-700"
-                  : "text-muted-foreground hover:bg-accent"
-              }`}
-            >
-              {c.title}
-            </button>
-          ))}
+          {chapters.map((c) => {
+            const pages = pagination[c.id]?.pages ?? [];
+            const open = expandedId === c.id;
+            return (
+              <div key={c.id}>
+                <div
+                  className={`flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-sm ${
+                    activeId === c.id
+                      ? "bg-indigo-500/15 text-indigo-700"
+                      : "text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(open ? null : c.id)}
+                    className="shrink-0 rounded p-0.5 hover:bg-black/5"
+                    aria-label={open ? "Recolher" : "Expandir"}
+                  >
+                    {open ? (
+                      <ChevronDown className="size-3.5" />
+                    ) : (
+                      <ChevronRight className="size-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveId(c.id);
+                      setExpandedId(c.id);
+                    }}
+                    disabled={busy}
+                    className="min-w-0 flex-1 truncate text-left"
+                  >
+                    {c.title}{" "}
+                    <span className="text-xs opacity-60">({pages.length}p)</span>
+                  </button>
+                </div>
+                {open && pages.length > 0 && (
+                  <div className="ml-4 flex flex-col border-l pl-2">
+                    {pages.map((pg, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => goToPage(c.id, pg.wordStart)}
+                        disabled={busy}
+                        title={pg.preview}
+                        className="flex items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      >
+                        <FileText className="size-3 shrink-0 opacity-60" />
+                        <span className="w-8 shrink-0 tabular-nums opacity-70">
+                          {pg.displayNumber ?? "·"}
+                        </span>
+                        <span className="truncate opacity-80">{pg.preview || "—"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="border-t p-3 text-xs text-muted-foreground">
-          {totalWords.toLocaleString("pt-BR")} palavras
-          {targetWords > 0 && ` / ${targetWords.toLocaleString("pt-BR")}`}
+          {totalWords.toLocaleString("pt-BR")} palavras · {bookPages}{" "}
+          {bookPages === 1 ? "página" : "páginas"}
+          {targetWords > 0 && ` · meta ${(targetWords / 280).toFixed(0)} págs`}
         </div>
       </aside>
 

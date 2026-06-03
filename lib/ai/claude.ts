@@ -120,6 +120,7 @@ export function createChapterStream(params: {
 export function createContinueStream(params: {
   briefText: string;
   context: string;
+  index?: number;
 }) {
   const anthropic = getAnthropic();
   if (!anthropic) return null;
@@ -134,7 +135,9 @@ export function createContinueStream(params: {
         cache_control: { type: "ephemeral" },
       },
     ],
-    messages: [{ role: "user", content: buildContinuePrompt(params.context) }],
+    messages: [
+      { role: "user", content: buildContinuePrompt(params.context, params.index) },
+    ],
   });
 }
 

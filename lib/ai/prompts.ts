@@ -138,11 +138,22 @@ export function buildChapterPrompt(index: number, prevContext?: string): string 
   ].join("\n\n");
 }
 
-export function buildContinuePrompt(context: string): string {
+export function buildContinuePrompt(tail: string, index?: number): string {
+  const t = tail.trim();
+  if (!t) {
+    // Capítulo vazio: escrever a ABERTURA avançando a história (sem repetir nada).
+    return [
+      `Escreva a ABERTURA do Capítulo ${index ?? ""} a partir do ESTADO_ATUAL e do BEAT_ATUAL do contexto.`,
+      "AVANCE a história com fatos NOVOS — não recapitule nem repita capítulos anteriores.",
+      "Escreva de 400 a 700 palavras, em parágrafos separados por linha em branco. Termine num gancho.",
+    ].join("\n\n");
+  }
   return [
-    "Continue o capítulo a seguir a partir de onde ele parou. NÃO repita nem reescreva o que já foi escrito — apenas dê sequência natural.",
-    "Mantenha o mesmo tom, tempo verbal e continuidade. Escreva de 400 a 700 palavras, em parágrafos separados por linha em branco.",
-    "Final do texto até agora:\n" + context,
+    "Abaixo está o FINAL do texto já escrito deste capítulo (apenas para você emendar).",
+    "Continue EXATAMENTE a partir da última frase, escrevendo SOMENTE texto NOVO que dá sequência à história. " +
+      "NUNCA repita, reescreva, resuma ou copie o que está abaixo — nem trechos de capítulos anteriores.",
+    "Mantenha o mesmo tom, tempo verbal e POV. Escreva de 400 a 700 palavras, em parágrafos separados por linha em branco.",
+    "--- FINAL DO TEXTO ATUAL (continue daqui) ---\n" + t,
   ].join("\n\n");
 }
 
