@@ -627,6 +627,42 @@ export async function suggestField(
   }
 }
 
+export type MatterKind = "dedication" | "epigraph" | "preface" | "acknowledgments" | "cta";
+
+const MATTER_COPY: Record<MatterKind, string> = {
+  dedication: "Escreva uma DEDICATÓRIA curta e tocante (1 a 2 linhas).",
+  epigraph:
+    "Sugira uma EPÍGRAFE: citação curta de abertura, coerente com o tema/tom. " +
+    "Pode ser uma frase original do universo do livro, com atribuição fictícia.",
+  preface:
+    "Escreva um PREFÁCIO breve (1 a 2 parágrafos curtos) apresentando a obra ao leitor.",
+  acknowledgments: "Escreva uma seção de AGRADECIMENTOS breve e calorosa (3 a 5 linhas).",
+  cta:
+    "Escreva uma CHAMADA FINAL (CTA) curta convidando o leitor (avaliar, " +
+    "newsletter, próximo livro). 2 a 3 linhas.",
+};
+
+/** Sugere o texto de um campo do front/back matter. "" sem API key. */
+export async function suggestMatterField(
+  kind: MatterKind,
+  bookContext: string
+): Promise<string> {
+  const anthropic = getAnthropic();
+  if (!anthropic) return "";
+  try {
+    const res = await anthropic.messages.create({
+      model: MODEL_FAST,
+      max_tokens: 500,
+      system: `${MATTER_COPY[kind]} Coerente com o livro. pt-BR. Responda só o texto, sem rótulos nem aspas ao redor.`,
+      messages: [{ role: "user", content: bookContext }],
+    });
+    const block = res.content.find((b) => b.type === "text");
+    return block && block.type === "text" ? block.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Sugere uma direção de arte para a capa (Camada 1). "" sem API key. */
 export async function suggestCoverArt(bookContext: string): Promise<string> {
   const anthropic = getAnthropic();

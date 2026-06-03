@@ -39,7 +39,7 @@ export function StudioNav({
             className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
               active
                 ? "bg-indigo-500/12 text-indigo-700"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                : "text-foreground hover:bg-indigo-500/10 hover:text-indigo-700"
             }`}
           >
             <span
@@ -62,10 +62,10 @@ export function StudioNav({
 
       <Link
         href={`${base}/versions`}
-        className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 ${
+        className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
           activeSeg === "versions"
             ? "bg-indigo-500/12 text-indigo-700"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            : "text-foreground hover:bg-indigo-500/10 hover:text-indigo-700"
         }`}
         title="Histórico e rollback (disponível em qualquer etapa)"
       >

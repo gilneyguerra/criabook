@@ -57,7 +57,7 @@ export function assembleMatter(
     back.push({ title: "Agradecimentos", body: matter.acknowledgments.trim() });
   if (matter.cta?.trim())
     back.push({ title: "Continue lendo", body: matter.cta.trim() });
-  back.push({ title: "Aviso de IA", body: AI_DISCLOSURE });
+  // O aviso de IA já consta na página de Copyright; não duplicar aqui.
 
   return { front, back };
 }

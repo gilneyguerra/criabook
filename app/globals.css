@@ -94,6 +94,17 @@ html {
   background-color: oklch(0.55 0.18 277 / 0.25); /* índigo translúcido */
 }
 
+/* Realce temporário das palavras humanizadas: surge e some lentamente. */
+@keyframes cb-humanize-fade {
+  0% { background-color: rgba(250, 204, 21, 0.55); }
+  100% { background-color: rgba(250, 204, 21, 0); }
+}
+.ProseMirror mark {
+  background-color: transparent;
+  border-radius: 2px;
+  animation: cb-humanize-fade 2.8s ease-out forwards;
+}
+
 /* Cursor de pena: esconde o cursor nativo só em ponteiros finos (desktop),
    mantendo o caret de texto nos campos editáveis. */
 @media (pointer: fine) {

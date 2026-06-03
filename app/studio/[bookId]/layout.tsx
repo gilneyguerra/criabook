@@ -26,7 +26,7 @@ export default async function StudioLayout({
       <header className="flex items-center gap-3 border-b px-4 py-2.5">
         <Link
           href="/dashboard"
-          className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm text-foreground hover:text-indigo-700"
         >
           <ArrowLeft className="size-4" />
           <span className="link-underline hidden sm:inline">Dashboard</span>

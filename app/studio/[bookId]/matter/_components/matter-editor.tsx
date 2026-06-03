@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText } from "lucide-react";
+import { FileText, Sparkles, Loader2 } from "lucide-react";
 
 import { assembleMatter, type Matter } from "@/lib/matter";
-import { saveMatter } from "../actions";
+import { saveMatter, suggestMatter } from "../actions";
+import type { MatterKind } from "@/lib/ai/claude";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,14 +13,15 @@ import { Label } from "@/components/ui/label";
 const AREA =
   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-const FIELDS: { k: keyof Matter; l: string; area?: boolean; ph?: string }[] = [
+// `sug` = campo gerável por IA. Nome do autor e "Sobre o autor" ficam manuais.
+const FIELDS: { k: keyof Matter; l: string; area?: boolean; ph?: string; sug?: MatterKind }[] = [
   { k: "authorName", l: "Nome do autor" },
-  { k: "dedication", l: "Dedicatória", area: true, ph: "Para..." },
-  { k: "epigraph", l: "Epígrafe", area: true, ph: "Uma citação de abertura (opcional)" },
-  { k: "preface", l: "Prefácio", area: true, ph: "Texto de abertura / apresentação (opcional)" },
+  { k: "dedication", l: "Dedicatória", area: true, ph: "Para...", sug: "dedication" },
+  { k: "epigraph", l: "Epígrafe", area: true, ph: "Uma citação de abertura (opcional)", sug: "epigraph" },
+  { k: "preface", l: "Prefácio", area: true, ph: "Texto de abertura / apresentação (opcional)", sug: "preface" },
   { k: "aboutAuthor", l: "Sobre o autor", area: true },
-  { k: "acknowledgments", l: "Agradecimentos", area: true },
-  { k: "cta", l: "Chamada final (CTA)", area: true, ph: "Convite para newsletter, próximo livro..." },
+  { k: "acknowledgments", l: "Agradecimentos", area: true, sug: "acknowledgments" },
+  { k: "cta", l: "Chamada final (CTA)", area: true, ph: "Convite para newsletter, próximo livro...", sug: "cta" },
 ];
 
 export function MatterEditor({
@@ -36,6 +38,17 @@ export function MatterEditor({
   const [matter, setMatter] = useState<Matter>(initialMatter);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [suggesting, setSuggesting] = useState<string | null>(null);
+
+  async function suggest(k: keyof Matter, kind: MatterKind) {
+    setSuggesting(kind);
+    const res = (await suggestMatter(bookId, kind)) as {
+      ok?: boolean;
+      text?: string;
+    };
+    setSuggesting(null);
+    if (res?.ok && res.text) set(k, res.text);
+  }
 
   const year = new Date().getFullYear();
   const assembled = useMemo(
@@ -72,7 +85,24 @@ export function MatterEditor({
 
         {FIELDS.map((f) => (
           <div key={f.k} className="flex flex-col gap-1.5">
-            <Label htmlFor={f.k}>{f.l}</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor={f.k}>{f.l}</Label>
+              {f.sug && (
+                <button
+                  type="button"
+                  onClick={() => suggest(f.k, f.sug!)}
+                  disabled={suggesting === f.sug}
+                  className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+                >
+                  {suggesting === f.sug ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-3" />
+                  )}
+                  Sugerir
+                </button>
+              )}
+            </div>
             {f.area ? (
               <textarea
                 id={f.k}

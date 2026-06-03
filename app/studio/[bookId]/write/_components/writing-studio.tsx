@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import Highlight from "@tiptap/extension-highlight";
 import {
   Sparkles,
   Coins,
@@ -120,7 +121,7 @@ export function WritingStudio({
   const proseClass = `prose prose-zinc max-w-none font-serif leading-relaxed focus:outline-none min-h-[60vh] [&_h2]:mt-6 [&_h2]:mb-2 [&_img]:mx-auto [&_img]:my-4 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg ${paraClass}`;
 
   const editor = useEditor({
-    extensions: [StarterKit, Image.configure({ inline: false })],
+    extensions: [StarterKit, Image.configure({ inline: false }), Highlight],
     editable: true,
     immediatelyRender: false,
     content: initialChapters[0]
@@ -234,12 +235,12 @@ export function WritingStudio({
       <Link
         key={it.label}
         href={`/studio/${bookId}/${it.seg}`}
-        className="block rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="block rounded text-foreground hover:bg-accent hover:text-indigo-700"
       >
         {inner}
       </Link>
     ) : (
-      <div key={it.label} className="block rounded text-muted-foreground/70" title="Gerado automaticamente">
+      <div key={it.label} className="block rounded text-foreground/60" title="Gerado automaticamente">
         {inner}
       </div>
     );
@@ -486,6 +487,27 @@ export function WritingStudio({
               .run();
           }
           if (typeof evt.balance === "number") setBalance(evt.balance);
+          // Realça as palavras alteradas com fade lento (~2,8s), depois remove.
+          const hlTo = editor.state.selection.from;
+          if (hlTo > insertedFrom) {
+            editor
+              .chain()
+              .setTextSelection({ from: insertedFrom, to: hlTo })
+              .setHighlight()
+              .setTextSelection(hlTo)
+              .run();
+            const lo = insertedFrom;
+            const hi = hlTo;
+            setTimeout(() => {
+              if (!editor || editor.isDestroyed) return;
+              editor
+                .chain()
+                .setTextSelection({ from: lo, to: hi })
+                .unsetHighlight()
+                .setTextSelection(hi)
+                .run();
+            }, 2900);
+          }
         }
       );
       // Persiste o resultado humanizado.
@@ -622,7 +644,7 @@ export function WritingStudio({
                   className={`flex w-full items-center gap-1 rounded-md px-1 py-1.5 text-sm ${
                     activeId === c.id
                       ? "bg-indigo-500/15 text-indigo-700"
-                      : "text-muted-foreground hover:bg-accent"
+                      : "text-foreground hover:bg-accent"
                   }`}
                 >
                   <button
@@ -659,7 +681,7 @@ export function WritingStudio({
                         onClick={() => goToPage(c.id, pg.wordStart)}
                         disabled={busy}
                         title={pg.preview}
-                        className="flex items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                        className="flex items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs text-foreground/80 hover:bg-accent hover:text-indigo-700"
                       >
                         <FileText className="size-3 shrink-0 opacity-60" />
                         <span className="w-8 shrink-0 tabular-nums opacity-70">
@@ -704,7 +726,44 @@ export function WritingStudio({
                     : ""}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Gerar */}
+            <Button onClick={generate} disabled={busy} title="Gera o próximo capítulo seguindo a história">
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={continueChapter}
+              disabled={busy || !activeId}
+              title="Continua o capítulo aberto a partir de onde parou"
+            >
+              <PenLine className="size-4" />
+              Continuar
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={illustrate}
+              disabled={busy || !activeId}
+              title="Selecione um trecho — a ilustração é criada a partir dele e entra logo após"
+            >
+              {illustrating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageIcon className="size-4" />
+              )}
+              Ilustrar Seleção
+            </Button>
+
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" />
+
+            {/* Refinar */}
             <Button
               variant="outline"
               size="sm"
@@ -717,14 +776,14 @@ export function WritingStudio({
               ) : (
                 <Wand2 className="size-4" />
               )}
-              Humanizar seleção
+              Humanizar
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={normalizeDoc}
               disabled={busy || !activeId}
-              title="Caracteres tipográficos (não mexe no estilo): aspas curvas, travessão de diálogo, reticências, espaços"
+              title="Caracteres tipográficos (não mexe no estilo): aspas curvas, travessão, reticências, espaços"
             >
               {normalizingDoc ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -733,11 +792,16 @@ export function WritingStudio({
               )}
               Normalizar
             </Button>
+
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" />
+
+            {/* Salvar */}
             <Button
               variant="outline"
               size="sm"
               onClick={handleSaveClick}
               disabled={busy || !activeId || saving}
+              title="Salvar o capítulo agora"
             >
               <Save className="size-4" />
               Salvar
@@ -752,38 +816,10 @@ export function WritingStudio({
               <History className="size-4" />
               Versão
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={continueChapter}
-              disabled={busy || !activeId}
-              title="Gera mais texto dentro do capítulo aberto"
-            >
-              <PenLine className="size-4" />
-              Continuar capítulo
-            </Button>
-            <Button onClick={generate} disabled={busy}>
-              {generating ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
-              {chapters.length === 0 ? "Gerar 1º capítulo" : "Próximo capítulo"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={illustrate}
-              disabled={busy || !activeId}
-              title="Selecione um trecho (ou posicione o cursor) — a ilustração entra logo após ele"
-            >
-              {illustrating ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ImageIcon className="size-4" />
-              )}
-              Ilustrar
-            </Button>
+
+            <span className="mx-1 h-5 w-px shrink-0 bg-border" />
+
+            {/* Avançar */}
             <Button asChild variant="ghost" size="sm">
               <Link href={`/studio/${bookId}/check`} title="Ir para a Revisão de consistência">
                 Próximo: Revisão
