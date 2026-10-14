@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   pgEnum,
@@ -10,6 +11,7 @@ import {
   uuid,
   vector,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 /* ============================================================
@@ -525,16 +527,25 @@ export const keywords = pgTable(
   ]
 );
 
-export const creditLedger = pgTable("credit_ledger", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  delta: integer("delta").notNull(), // + compra, - consumo
-  reason: text("reason").notNull(),
-  refId: text("ref_id"), // id da operação relacionada (job, checkout...)
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    delta: integer("delta").notNull(), // + compra, - consumo
+    reason: text("reason").notNull(),
+    refId: text("ref_id"), // id da operação relacionada (job, checkout...)
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Uma sessão de checkout do Stripe credita no máximo uma vez.
+    uniqueIndex("credit_ledger_purchase_ref_uniq")
+      .on(table.refId)
+      .where(sql`${table.reason} = 'compra'`),
+  ]
+);
 
 export const generationJobs = pgTable("generation_jobs", {
   id: uuid("id").primaryKey().defaultRandom(),

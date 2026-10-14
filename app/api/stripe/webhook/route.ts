@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 import { stripe } from "@/lib/stripe/client";
-import { addCredits } from "@/lib/credits";
+import { handleStripeEvent } from "@/lib/stripe/webhook";
 
 /**
- * Webhook do Stripe. Em checkout.session.completed, credita os créditos do
- * pacote ao usuário (idempotente via refId = session.id).
- *
- * Lê o corpo cru (req.text) para verificar a assinatura.
+ * Webhook do Stripe. Verifica a assinatura (corpo cru via req.text) e delega
+ * para handleStripeEvent, que credita de forma idempotente por session.id.
+ * Erro de banco → 500, para o Stripe reenviar.
  */
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -34,14 +33,6 @@ export async function POST(request: Request) {
     });
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const userId = session.metadata?.userId;
-    const credits = Number(session.metadata?.credits ?? 0);
-    if (userId && credits > 0) {
-      await addCredits(userId, credits, "compra", session.id);
-    }
-  }
-
-  return NextResponse.json({ received: true });
+  const outcome = await handleStripeEvent(event);
+  return NextResponse.json({ received: true, outcome });
 }
