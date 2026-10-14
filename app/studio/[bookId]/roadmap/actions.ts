@@ -12,17 +12,13 @@ import {
 import { generateBeats } from "@/lib/ai/claude";
 import { bookContextText } from "@/lib/ai/prompts";
 import { getTemplate } from "@/lib/structure";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import { creditedAction } from "@/lib/ai/with-credits";
 
 export async function generateStructureAction(bookId: string) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return { error: "Não autenticado." };
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
-
-  const estimate = creditsForUsage({ tokensIn: 1000, tokensOut: 2000 });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) return { error: "Créditos insuficientes." };
 
   const template = getTemplate(book.structureMethod);
   const context = bookContextText({
@@ -37,30 +33,32 @@ export async function generateStructureAction(bookId: string) {
     brief: book.brief as Record<string, string[]>,
   });
 
-  let filled: { title: string; description: string }[] = [];
-  try {
-    filled = await generateBeats(
-      context,
-      template.map((t) => t.label)
-    );
-  } catch {
-    return { error: "Falha ao gerar a estrutura." };
-  }
-  if (!filled.length) {
-    return { error: "IA não configurada (defina ANTHROPIC_API_KEY)." };
-  }
-
-  const beats = template.map((t, i) => ({
-    order: i,
-    beatType: t.beatType,
-    title: filled[i]?.title?.trim() || t.label,
-    summary: filled[i]?.description?.trim() || "",
-  }));
-
-  await replaceStoryBeats(bookId, beats);
-  try {
-    await debitCredits(session.user.id, estimate, "gerar estrutura");
-  } catch {}
+  const r = await creditedAction(
+    session.user.id,
+    "structure",
+    async () => {
+      const filled = await generateBeats(
+        context,
+        template.map((t) => t.label)
+      );
+      if (!filled.length) return null;
+      await replaceStoryBeats(
+        bookId,
+        template.map((t, i) => ({
+          order: i,
+          beatType: t.beatType,
+          title: filled[i]?.title?.trim() || t.label,
+          summary: filled[i]?.description?.trim() || "",
+        }))
+      );
+      return filled.length;
+    },
+    {
+      empty: "Não foi possível gerar a estrutura agora.",
+      failure: "Falha ao gerar a estrutura.",
+    }
+  );
+  if ("error" in r) return r;
 
   const saved = await getStoryBeats(bookId);
   return {

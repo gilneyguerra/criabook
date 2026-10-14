@@ -98,8 +98,7 @@ export async function withCredits<T>(
 }
 
 /** Mensagem padrão para saldo insuficiente (402). */
-export const NO_CREDITS_MESSAGE =
-  "Créditos insuficientes. Compre mais em /dashboard/creditos.";
+export const NO_CREDITS_MESSAGE = "Créditos insuficientes: /dashboard/creditos";
 
 /** Converte InsufficientCreditsError em resposta 402; outros erros: null. */
 export function creditErrorResponse(err: unknown): NextResponse | null {
@@ -107,4 +106,51 @@ export function creditErrorResponse(err: unknown): NextResponse | null {
     return NextResponse.json({ error: NO_CREDITS_MESSAGE }, { status: 402 });
   }
   return null;
+}
+
+/* ---------- Server actions ---------- */
+
+export type ActionError = { error: string; code?: "no_credits" };
+
+class EmptyAiResult extends Error {}
+
+function isEmpty(v: unknown): boolean {
+  return (
+    v === null ||
+    v === undefined ||
+    v === "" ||
+    v === 0 ||
+    (Array.isArray(v) && v.length === 0)
+  );
+}
+
+/**
+ * Padrão das actions de IA: withCredits + mapeamento de erros para o
+ * formato { error } que o cliente já exibe.
+ *  - saldo insuficiente → { error, code: "no_credits" } (cliente mostra link)
+ *  - resultado vazio (IA sem resposta útil) → estorna e devolve `empty`
+ *  - exceção → estorna e devolve `failure` (detalhe só no log)
+ */
+export async function creditedAction<T>(
+  userId: string,
+  op: AiOp,
+  fn: () => Promise<T | null | undefined>,
+  messages: { empty: string; failure?: string }
+): Promise<{ value: T } | ActionError> {
+  try {
+    const value = await withCredits(userId, op, async () => {
+      const v = await fn();
+      if (isEmpty(v)) throw new EmptyAiResult();
+      return v as T;
+    });
+    return { value };
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      return { error: NO_CREDITS_MESSAGE, code: "no_credits" };
+    }
+    if (!(err instanceof EmptyAiResult)) {
+      console.error(`[ai:${op}] falha na action`, err);
+    }
+    return { error: err instanceof EmptyAiResult ? messages.empty : (messages.failure ?? messages.empty) };
+  }
 }

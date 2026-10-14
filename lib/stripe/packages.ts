@@ -1,7 +1,7 @@
 /**
  * Pacotes de crédito à venda. Preços em centavos (BRL) — placeholders,
  * ajuste conforme a margem (custo de IA por livro). `credits` é o que o
- * usuário recebe; o consumo por geração é calculado em creditsForUsage().
+ * usuário recebe; o consumo por geração é medido em lib/ai/metering.ts.
  */
 export type CreditPackage = {
   id: string;

@@ -7,6 +7,7 @@ import { getBookForUser, saveBookMatter } from "@/lib/db/queries";
 import { bookContextText } from "@/lib/ai/prompts";
 import { suggestMatterField, type MatterKind } from "@/lib/ai/claude";
 import type { Matter } from "@/lib/matter";
+import { creditedAction } from "@/lib/ai/with-credits";
 
 export async function saveMatter(bookId: string, matter: Matter) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -36,7 +37,9 @@ export async function suggestMatter(bookId: string, kind: MatterKind) {
     structureMethod: book.structureMethod,
     brief: book.brief as Record<string, string[]>,
   });
-  const text = await suggestMatterField(kind, ctx);
-  if (!text) return { error: "Não foi possível sugerir agora." };
-  return { ok: true, text };
+  const r = await creditedAction(session.user.id, "suggest", () => suggestMatterField(kind, ctx), {
+    empty: "Não foi possível sugerir agora.",
+  });
+  if ("error" in r) return r;
+  return { ok: true, text: r.value };
 }

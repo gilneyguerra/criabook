@@ -1,5 +1,7 @@
 "use client";
 
+import { AiErrorText, aiHttpError } from "@/components/ai-error-text";
+
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Loader2, Save, ImageIcon, Download, Coins, Palette } from "lucide-react";
 
@@ -198,7 +200,7 @@ export function CoverDesigner({
         }
         if (typeof d.balance === "number") setBalance(d.balance);
       } else {
-        setMsg(d.error ?? "Falha ao gerar a arte.");
+        setMsg(d.error ?? aiHttpError(r.status, "Falha ao gerar a arte."));
       }
     } catch {
       setMsg("Falha de conexão ao gerar a arte.");
@@ -343,7 +345,11 @@ export function CoverDesigner({
         </div>
       </div>
 
-      {msg && <p className="mb-4 rounded-md bg-secondary/60 px-3 py-2 text-sm">{msg}</p>}
+      {msg && (
+        <p className="mb-4 rounded-md bg-secondary/60 px-3 py-2 text-sm">
+          <AiErrorText text={msg} />
+        </p>
+      )}
 
       <div className="grid gap-8 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
         {/* Construtor */}
