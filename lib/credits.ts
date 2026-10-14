@@ -106,3 +106,125 @@ export function creditsForUsage({
       images * perImage
   );
 }
+
+/* ============================================================
+ * Reserva → acerto/estorno (S1)
+ *
+ * Toda entrada de IA reserva a estimativa ANTES de chamar o provedor e, no
+ * fim, acerta pelo consumo real ou estorna tudo em caso de falha. Cada passo
+ * é um único comando SQL (neon-http não tem transação interativa), e os três
+ * lançamentos compartilham o mesmo refId no ledger.
+ * ============================================================ */
+
+export type Reservation = {
+  userId: string;
+  refId: string;
+  op: string;
+  amount: number;
+};
+
+/**
+ * Debita `amount` do saldo como reserva. Lança InsufficientCreditsError se
+ * não houver saldo — o UPDATE condicional é o que impede requisições
+ * paralelas de passarem todas pela checagem.
+ */
+export async function reserveCredits(
+  userId: string,
+  op: string,
+  amount: number
+): Promise<Reservation & { balance: number }> {
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error(`Reserva inválida: ${amount}`);
+  }
+  const refId = crypto.randomUUID();
+
+  const result = await db.execute<{ balance: number }>(sql`
+    WITH upd AS (
+      UPDATE profiles
+      SET credits_balance = credits_balance - ${amount}::int
+      WHERE id = ${userId} AND credits_balance >= ${amount}::int
+      RETURNING id, credits_balance
+    ), led AS (
+      INSERT INTO credit_ledger (user_id, delta, reason, ref_id, op)
+      SELECT id, -(${amount}::int), 'reserva', ${refId}, ${op} FROM upd
+    )
+    SELECT credits_balance AS balance FROM upd
+  `);
+
+  const row = result.rows[0];
+  if (!row) throw new InsufficientCreditsError();
+  return { userId, refId, op, amount, balance: Number(row.balance) };
+}
+
+type CloseResult = {
+  /** false se a reserva já tinha sido fechada (acerto/estorno repetido). */
+  applied: boolean;
+  /** Variação aplicada ao saldo neste fechamento. */
+  delta: number;
+  balance: number | null;
+};
+
+/**
+ * Fecha a reserva. `diff` = custo real − reservado:
+ *  - diff ≤ 0 devolve a sobra (−diff);
+ *  - diff > 0 debita o excedente, limitado ao saldo (nunca fica negativo).
+ * O índice único (ref_id) WHERE reason IN ('acerto','estorno') garante um
+ * único fechamento por reserva, mesmo com chamadas repetidas ou paralelas.
+ */
+async function closeReservation(
+  res: Reservation,
+  reason: "acerto" | "estorno",
+  diff: number
+): Promise<CloseResult> {
+  const result = await db.execute<{ delta: number; balance: number | null }>(sql`
+    WITH p AS (
+      SELECT credits_balance FROM profiles WHERE id = ${res.userId} FOR UPDATE
+    ), ins AS (
+      INSERT INTO credit_ledger (user_id, delta, reason, ref_id, op)
+      SELECT ${res.userId},
+             CASE WHEN ${diff}::int <= 0 THEN -(${diff}::int)
+                  ELSE -LEAST(p.credits_balance, ${diff}::int) END,
+             ${reason}, ${res.refId}, ${res.op}
+      FROM p
+      ON CONFLICT (ref_id) WHERE reason IN ('acerto', 'estorno') DO NOTHING
+      RETURNING delta
+    ), upd AS (
+      UPDATE profiles SET credits_balance = profiles.credits_balance + ins.delta
+      FROM ins WHERE profiles.id = ${res.userId}
+      RETURNING profiles.credits_balance
+    )
+    SELECT ins.delta, upd.credits_balance AS balance FROM ins LEFT JOIN upd ON true
+  `);
+
+  const row = result.rows[0];
+  if (!row) return { applied: false, delta: 0, balance: null };
+  return {
+    applied: true,
+    delta: Number(row.delta),
+    balance: row.balance === null ? null : Number(row.balance),
+  };
+}
+
+/** Acerta a reserva pelo custo real. Excedente sem saldo vai para o log. */
+export async function settleCredits(
+  res: Reservation,
+  actualCost: number
+): Promise<CloseResult> {
+  const diff = Math.ceil(actualCost) - res.amount;
+  const out = await closeReservation(res, "acerto", diff);
+  if (out.applied && diff > 0 && -out.delta < diff) {
+    console.warn("[credits] custo real acima do reservado sem saldo", {
+      refId: res.refId,
+      op: res.op,
+      reserved: res.amount,
+      actual: Math.ceil(actualCost),
+      uncovered: diff + out.delta,
+    });
+  }
+  return out;
+}
+
+/** Estorna a reserva inteira (falha da IA ou da operação). */
+export async function refundCredits(res: Reservation): Promise<CloseResult> {
+  return closeReservation(res, "estorno", -res.amount);
+}

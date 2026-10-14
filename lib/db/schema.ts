@@ -537,6 +537,9 @@ export const creditLedger = pgTable(
     delta: integer("delta").notNull(), // + compra, - consumo
     reason: text("reason").notNull(),
     refId: text("ref_id"), // id da operação relacionada (job, checkout...)
+    // Operação de IA (chapter, humanize, image...) nos lançamentos de
+    // reserva/acerto/estorno; base para recalibrar as estimativas.
+    op: text("op"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -544,6 +547,10 @@ export const creditLedger = pgTable(
     uniqueIndex("credit_ledger_purchase_ref_uniq")
       .on(table.refId)
       .where(sql`${table.reason} = 'compra'`),
+    // Cada reserva é fechada uma única vez: ou por acerto, ou por estorno.
+    uniqueIndex("credit_ledger_settle_ref_uniq")
+      .on(table.refId)
+      .where(sql`${table.reason} in ('acerto', 'estorno')`),
   ]
 );
 

@@ -9,6 +9,7 @@ import {
   buildHumanizePrompt,
   buildContinuePrompt,
 } from "@/lib/ai/prompts";
+import { instrumentAnthropic } from "@/lib/ai/metering";
 
 export const MODEL_MAIN =
   process.env.ANTHROPIC_MODEL_MAIN ?? "claude-sonnet-4-6";
@@ -25,7 +26,9 @@ let client: Anthropic | null = null;
 export function getAnthropic(): Anthropic | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  if (!client) client = new Anthropic({ apiKey, maxRetries: 3 });
+  // Instrumentado: o usage de toda chamada vai para o Meter do contexto
+  // (withCredits), que acerta os créditos pelo consumo real.
+  if (!client) client = instrumentAnthropic(new Anthropic({ apiKey, maxRetries: 3 }));
   return client;
 }
 
