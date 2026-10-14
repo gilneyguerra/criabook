@@ -1,0 +1,56 @@
+# Regenera package-lock.json e as migrations do Drizzle no próprio GitHub,
+# porque o registry do npm não é acessível na máquina de desenvolvimento.
+#
+# Uso: commit com "[sync-lock]" na mensagem (ou rodar manualmente em Actions).
+# O bot commita o resultado na mesma branch. Esse commit NÃO dispara o CI
+# (limitação do GITHUB_TOKEN): faça pull e um novo push para rodar o CI.
+name: sync-lock
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[sync-lock]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: npm install (atualiza o lockfile)
+        run: npm install --no-audit --no-fund
+
+      - name: drizzle-kit generate
+        run: |
+          if [ -d lib/db/migrations/meta ]; then
+            npx drizzle-kit generate
+          else
+            npx drizzle-kit generate --name baseline
+          fi
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json lib/db/migrations
+          if git diff --cached --quiet; then
+            echo "Nada a commitar."
+          else
+            git commit -m "chore: sincroniza package-lock e migrations (bot)"
+            git push
+          fi

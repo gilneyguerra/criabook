@@ -33,7 +33,7 @@ travessão de diálogo e as aspas curvas.
 Rode no SQL Editor do Neon:
 
 ```sql
--- lib/db/migrations/0002_layout.sql
+-- lib/db/legacy/0002_layout.sql (histórico)
 ALTER TABLE books ADD COLUMN IF NOT EXISTS layout_profile_id text;
 ```
 

@@ -61,7 +61,7 @@ Mostra também os fios de trama e uma linha do tempo navegável.
 Rode no SQL Editor do Neon (idempotente):
 
 ```sql
--- lib/db/migrations/0003_consistency.sql
+-- lib/db/legacy/0003_consistency.sql (histórico)
 -- cria enums + canon_facts, character_knowledge, plot_threads,
 -- world_state_snapshots, described_items, consistency_issues
 -- e estende timeline_events (participants, location, story_time, caused_by)
