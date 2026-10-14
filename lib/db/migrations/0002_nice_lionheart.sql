@@ -1,0 +1,2 @@
+ALTER TABLE "credit_ledger" ADD COLUMN "op" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "credit_ledger_settle_ref_uniq" ON "credit_ledger" USING btree ("ref_id") WHERE "credit_ledger"."reason" in ('acerto', 'estorno');
