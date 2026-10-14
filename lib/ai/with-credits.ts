@@ -15,6 +15,7 @@ import {
   settleCredits,
   type Reservation,
 } from "@/lib/credits";
+import { RateLimitError, checkAiRateLimit } from "@/lib/ratelimit";
 
 export type MeteredOp = {
   reservation: Reservation;
@@ -34,12 +35,14 @@ export type MeteredOp = {
  * estornar depois. Usado pelas rotas com SSE, em que a resposta sai antes
  * do fim do trabalho: reservar antes de abrir o stream, fechar num finally.
  *
- * Lança InsufficientCreditsError se não houver saldo para a reserva.
+ * Lança RateLimitError (20/min, 300/dia por usuário) ou
+ * InsufficientCreditsError se não houver saldo para a reserva.
  */
 export async function startMetered(
   userId: string,
   op: AiOp
 ): Promise<MeteredOp> {
+  await checkAiRateLimit(userId);
   const reserved = await reserveCredits(userId, op, estimateCredits(op));
   const { balance, ...reservation } = reserved;
   const meter = new Meter(MODEL_FAST);
@@ -100,17 +103,31 @@ export async function withCredits<T>(
 /** Mensagem padrão para saldo insuficiente (402). */
 export const NO_CREDITS_MESSAGE = "Créditos insuficientes: /dashboard/creditos";
 
-/** Converte InsufficientCreditsError em resposta 402; outros erros: null. */
+export function rateLimitMessage(err: RateLimitError): string {
+  return err.bucket === "minute"
+    ? "Muitas requisições de IA em pouco tempo. Aguarde um minuto e tente de novo."
+    : "Limite diário de requisições de IA atingido. Tente novamente amanhã.";
+}
+
+/**
+ * Converte saldo insuficiente em 402 e rate limit em 429; outros erros: null.
+ */
 export function creditErrorResponse(err: unknown): NextResponse | null {
   if (err instanceof InsufficientCreditsError) {
     return NextResponse.json({ error: NO_CREDITS_MESSAGE }, { status: 402 });
+  }
+  if (err instanceof RateLimitError) {
+    return NextResponse.json(
+      { error: rateLimitMessage(err) },
+      { status: 429, headers: { "Retry-After": err.bucket === "minute" ? "60" : "3600" } }
+    );
   }
   return null;
 }
 
 /* ---------- Server actions ---------- */
 
-export type ActionError = { error: string; code?: "no_credits" };
+export type ActionError = { error: string; code?: "no_credits" | "rate_limited" };
 
 class EmptyAiResult extends Error {}
 
@@ -147,6 +164,9 @@ export async function creditedAction<T>(
   } catch (err) {
     if (err instanceof InsufficientCreditsError) {
       return { error: NO_CREDITS_MESSAGE, code: "no_credits" };
+    }
+    if (err instanceof RateLimitError) {
+      return { error: rateLimitMessage(err), code: "rate_limited" };
     }
     if (!(err instanceof EmptyAiResult)) {
       console.error(`[ai:${op}] falha na action`, err);

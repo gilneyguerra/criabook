@@ -18,7 +18,8 @@ import {
 } from "@/lib/ai/claude";
 import { bookContextText } from "@/lib/ai/prompts";
 import { indexBibleEntry } from "@/lib/ai/rag";
-import { creditedAction } from "@/lib/ai/with-credits";
+import { creditedAction, rateLimitMessage } from "@/lib/ai/with-credits";
+import { RateLimitError, checkAiRateLimit } from "@/lib/ratelimit";
 
 export type BriefPayload = {
   title: string;
@@ -36,6 +37,16 @@ export type BriefPayload = {
 export async function saveBrief(bookId: string, payload: BriefPayload) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return { error: "Não autenticado." };
+
+  // Os embeddings das palavras-chave são pagos: mesmo limite das entradas de IA.
+  try {
+    await checkAiRateLimit(session.user.id);
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { error: rateLimitMessage(err), code: "rate_limited" as const };
+    }
+    throw err;
+  }
 
   // Alimenta a base compartilhada de palavras-chave (dedup exato + semântico).
   for (const cat of KEYWORD_CATEGORIES) {

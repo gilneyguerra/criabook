@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth";
 import { suggestKeywords } from "@/lib/ai/claude";
 import { getCategory } from "@/lib/keywords";
 import { creditErrorResponse, withCredits } from "@/lib/ai/with-credits";
-import { InsufficientCreditsError } from "@/lib/credits";
 
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -31,7 +30,8 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ suggestions });
   } catch (err) {
-    if (err instanceof InsufficientCreditsError) return creditErrorResponse(err)!;
+    const limited = creditErrorResponse(err);
+    if (limited) return limited;
     // Falha de IA → fallback estático (não bloqueia o usuário; nada cobrado).
   }
 

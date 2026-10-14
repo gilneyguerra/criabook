@@ -12,6 +12,8 @@ import {
   vector,
   index,
   uniqueIndex,
+  bigint,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 /* ============================================================
@@ -67,6 +69,30 @@ export const verification = pgTable("verification", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Rate limit do Better Auth (rateLimit.storage = "database"): login,
+// cadastro e reset de senha por IP. Formato exigido pelo better-auth 1.7.
+export const rateLimit = pgTable("rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
+
+// Rate limit das entradas de IA por usuário (janela fixa): uma linha por
+// usuário e janela ("minute" | "day"), atualizada com um único upsert.
+export const aiRateLimits = pgTable(
+  "ai_rate_limits",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    bucket: text("bucket").notNull(),
+    windowStart: timestamp("window_start").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.bucket] })]
+);
 
 /* ============================================================
  * Enums de domínio
