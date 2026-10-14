@@ -78,17 +78,16 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@db.localtest.me:5432/postgres
         run: npm test
 
-      # Temporário (Fase 0): compara o schema criado pelos SQLs legados com o
-      # da migration baseline. Informativo; sai quando o baseline for aceito.
+      # Temporário (Fase 0): o schema dos SQLs legados (+ renomeação de
+      # constraints) precisa ser idêntico ao da baseline. Sai após o G6.
       - name: Drift legado × baseline
-        continue-on-error: true
         run: |
           docker exec "${{ job.services.postgres.id }}" psql -U postgres -c "CREATE DATABASE legacy"
-          for f in init.sql alter_embedding_1024.sql 0001_quality.sql 0002_layout.sql 0003_consistency.sql 0004_cover.sql; do
+          for f in init.sql alter_embedding_1024.sql 0001_quality.sql 0002_layout.sql 0003_consistency.sql 0004_cover.sql rename_constraints_to_drizzle.sql; do
             echo "== $f"
             docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d legacy -v ON_ERROR_STOP=1 -q < "lib/db/legacy/$f"
           done
-          dump() { docker exec "${{ job.services.postgres.id }}" pg_dump -U postgres -d "$1" -s --no-owner --no-privileges --exclude-schema=drizzle | grep -v '^--' | sed 's/,$//' | sort -u; }
+          dump() { docker exec "${{ job.services.postgres.id }}" pg_dump -U postgres -d "$1" -s --no-owner --no-privileges --exclude-schema=drizzle --exclude-schema=neon_control_plane | grep -vE '^(--|\\(un)?restrict)' | sed 's/,$//' | sort -u; }
           dump legacy > legacy.txt
           dump postgres > baseline.txt
           diff legacy.txt baseline.txt && echo "Sem drift."
