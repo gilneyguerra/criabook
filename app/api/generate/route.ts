@@ -180,7 +180,7 @@ export async function POST(request: Request) {
               await metered.run(() => persistExtraction({
                 bookId,
                 index: curIndex,
-                cleanText: normalized,
+                cleanText: text,
                 bookContext: briefText,
                 novoFatos,
                 lacunas,
