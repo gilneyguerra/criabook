@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE TYPE "public"."book_status" AS ENUM('draft', 'generating', 'review', 'done');--> statement-breakpoint
 CREATE TYPE "public"."book_type" AS ENUM('fiction', 'nonfiction');--> statement-breakpoint
 CREATE TYPE "public"."chapter_status" AS ENUM('pending', 'generating', 'review', 'done');--> statement-breakpoint
