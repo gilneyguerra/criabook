@@ -33,4 +33,5 @@ jobs:
             echo "::error::Secret DATABASE_URL_UNPOOLED não configurado no environment production."
             exit 1
           fi
+          node scripts/migrate-guard.mjs
           npx drizzle-kit migrate
