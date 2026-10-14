@@ -42,3 +42,8 @@
 **Causa:** a narrowing de fluxo do TypeScript **não atravessa funções aninhadas/closures**. `const canvas = ref.current` tem tipo declarado `T | null`; dentro de `build()`/`draw()`/callbacks do ResizeObserver a narrowing se perde.
 **Correção:** após o guard, capturar em const de tipo já não-nulo: `const el: HTMLCanvasElement = canvas;` e usar `el` nos closures (mesmo padrão no `radial-orbital-timeline.tsx`).
 **Lição:** ao usar `ref.current` dentro de closures (rAF, observers, listeners), reatribuir a uma const tipada não-nula depois do guard.
+
+## 2026-10-14 — Lockfile e migrations gerados no GitHub (Fase 0)
+**Contexto:** sem npm local, não dá para gerar `package-lock.json` nem rodar `drizzle-kit generate` aqui.
+**Solução:** workflow `.github/workflows/sync-lock.yml`. Qualquer commit (fora da `main`) com `[sync-lock]` na mensagem faz o bot rodar `npm install` + `drizzle-kit generate` e commitar o resultado na mesma branch.
+**Atenção:** o commit do bot não dispara o CI (limite do `GITHUB_TOKEN`). Depois dele, `git pull` e um novo push. A Vercel agora usa `npm ci` (`vercel.json`): mudou dependência no `package.json` → precisa do `[sync-lock]`, senão o build falha por lockfile dessincronizado.
