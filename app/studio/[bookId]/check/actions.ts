@@ -19,7 +19,7 @@ import {
   getThreads,
   getTimelineEvents,
 } from "@/lib/memory/ledgers";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import { creditedAction } from "@/lib/ai/with-credits";
 import { getLayoutProfile } from "@/lib/layout/profile";
 import { normalize } from "@/lib/text/normalizer";
 import { textToDoc } from "@/lib/tiptap";
@@ -51,19 +51,16 @@ export async function runConsistencyCheck(bookId: string) {
   if (!chapters.length)
     return { error: "Gere pelo menos um capítulo antes de revisar." };
 
-  const estimate = creditsForUsage({ tokensIn: 3000, tokensOut: 2000 });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) return { error: "Créditos insuficientes." };
-
-  let issues;
-  try {
-    issues = await runContinuityCheck(bookId);
-  } catch {
-    return { error: "Falha ao revisar. Tente novamente." };
-  }
-  try {
-    await debitCredits(session.user.id, estimate, "verificação de consistência");
-  } catch {}
+  // Lista vazia de issues é resultado válido: embrulhada em objeto para não
+  // ser tratada como "IA sem resposta".
+  const r = await creditedAction(
+    session.user.id,
+    "consistency",
+    async () => ({ issues: await runContinuityCheck(bookId) }),
+    { empty: "Falha ao revisar. Tente novamente." }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  const { issues } = r.value;
 
   await replaceOpenIssues(
     bookId,
@@ -124,37 +121,42 @@ export async function correctPassage(bookId: string, issueId: string) {
   if (!chapter || !chapter.contentText)
     return { error: "Capítulo do conflito não encontrado." };
 
-  const estimate = creditsForUsage({ tokensIn: 4000, tokensOut: 4000 });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) return { error: "Créditos insuficientes." };
+  const original = chapter.contentText;
+  const r = await creditedAction(
+    session.user.id,
+    "revise",
+    async () => {
+      // Snapshot antes (rollback).
+      await createVersion(bookId, chapter.id, "Antes de corrigir consistência", {
+        contentText: original,
+        contentJson: textToDoc(original),
+      });
 
-  // Snapshot antes (rollback).
-  await createVersion(bookId, chapter.id, "Antes de corrigir consistência", {
-    contentText: chapter.contentText,
-    contentJson: textToDoc(chapter.contentText),
-  });
+      const revised = await reviseChapterForIssue({
+        text: original,
+        description: issue.description,
+        conflictsWith: issue.conflictsWith,
+      });
+      if (!revised) return null;
 
-  const revised = await reviseChapterForIssue({
-    text: chapter.contentText,
-    description: issue.description,
-    conflictsWith: issue.conflictsWith,
-  });
-  if (!revised) return { error: "Não foi possível corrigir agora. Tente de novo." };
-
-  const profile = getLayoutProfile(book.layoutProfileId, book.type);
-  const normalized = normalize(revised, profile);
-
-  const saved = await updateChapterContent(chapter.id, session.user.id, {
-    contentText: normalized,
-    contentJson: textToDoc(normalized),
-  });
-  if (!saved) return { error: "Capítulo não encontrado." };
+      const profile = getLayoutProfile(book.layoutProfileId, book.type);
+      const normalized = normalize(revised, profile);
+      const saved = await updateChapterContent(chapter.id, session.user.id, {
+        contentText: normalized,
+        contentJson: textToDoc(normalized),
+      });
+      if (!saved) throw new Error("capítulo não encontrado ao salvar");
+      return normalized;
+    },
+    {
+      empty: "Não foi possível corrigir agora. Tente de novo.",
+      failure: "Não foi possível corrigir agora. Tente de novo.",
+    }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
 
   try {
-    await indexChapter(bookId, chapter.id, normalized);
-  } catch {}
-  try {
-    await debitCredits(session.user.id, estimate, "correção de consistência", chapter.id);
+    await indexChapter(bookId, chapter.id, r.value);
   } catch {}
   await setIssueStatus(bookId, issueId, "resolved");
 

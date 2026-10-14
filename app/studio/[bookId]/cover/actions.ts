@@ -20,7 +20,7 @@ import {
   suggestComplementaryArt,
   suggestCoverStyle,
 } from "@/lib/ai/claude";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import { creditedAction } from "@/lib/ai/with-credits";
 import type { Matter } from "@/lib/matter";
 
 type BookRow = NonNullable<Awaited<ReturnType<typeof getBookForUser>>>;
@@ -92,9 +92,12 @@ export async function suggestArtAction(bookId: string) {
   if (!session) return { error: "Não autenticado." };
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
-  const text = await suggestCoverArt(await coverContext(bookId, book, false));
-  if (!text) return { error: "Não foi possível sugerir agora." };
-  return { ok: true, text };
+  const ctx = await coverContext(bookId, book, false);
+  const r = await creditedAction(session.user.id, "suggest", () => suggestCoverArt(ctx), {
+    empty: "Não foi possível sugerir agora.",
+  });
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, text: r.value };
 }
 
 /** Sugere estilo/paleta/cores da capa a partir do livro. */
@@ -103,9 +106,12 @@ export async function suggestStyleAction(bookId: string) {
   if (!session) return { error: "Não autenticado." };
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
-  const s = await suggestCoverStyle(await coverContext(bookId, book, false));
-  if (!s) return { error: "Não foi possível sugerir agora." };
-  return { ok: true, ...s };
+  const ctx = await coverContext(bookId, book, false);
+  const r = await creditedAction(session.user.id, "suggest", () => suggestCoverStyle(ctx), {
+    empty: "Não foi possível sugerir agora.",
+  });
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, ...r.value };
 }
 
 /** Sugere a cena da CONTRA CAPA que complementa a capa frontal. */
@@ -121,9 +127,19 @@ export async function suggestBackArtAction(
   if (!book) return { error: "Livro não encontrado." };
   if (!frontPrompt.trim())
     return { error: "Defina a imagem da capa primeiro." };
-  const text = await suggestComplementaryArt(frontPrompt, style, palette);
-  if (!text) return { error: "Não foi possível sugerir agora." };
-  return { ok: true, text };
+  const r = await creditedAction(
+    session.user.id,
+    "suggest",
+    () =>
+      suggestComplementaryArt(
+        frontPrompt.slice(0, 2000),
+        style.slice(0, 300),
+        palette.slice(0, 300)
+      ),
+    { empty: "Não foi possível sugerir agora." }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, text: r.value };
 }
 
 /** Gera um texto comercial (4ª capa / orelha / bio / prova social). */
@@ -136,10 +152,6 @@ export async function generateCoverTextAction(
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
 
-  const estimate = creditsForUsage({ tokensIn: 2000, tokensOut: 1000 });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) return { error: "Créditos insuficientes." };
-
   let ctx = await coverContext(bookId, book, kind !== "bio");
   if (kind === "bio") {
     const meta = await getBookMeta(bookId).catch(() => null);
@@ -147,18 +159,26 @@ export async function generateCoverTextAction(
     if (prev) ctx += `\n\nBio atual (refine): ${prev}`;
   }
 
-  try {
-    if (kind === "social") {
-      const items = await generateSocialProof(ctx);
-      if (!items.length) return { error: "Não foi possível gerar agora." };
-      await debitCredits(session.user.id, estimate, "texto da capa").catch(() => {});
-      return { ok: true, social: items };
-    }
-    const text = await generateCoverText(kind, ctx);
-    if (!text) return { error: "Não foi possível gerar agora." };
-    await debitCredits(session.user.id, estimate, "texto da capa").catch(() => {});
-    return { ok: true, text };
-  } catch {
-    return { error: "Falha ao gerar o texto. Tente novamente." };
+  const messages = {
+    empty: "Não foi possível gerar agora.",
+    failure: "Falha ao gerar o texto. Tente novamente.",
+  };
+  if (kind === "social") {
+    const r = await creditedAction(
+      session.user.id,
+      "cover_text",
+      () => generateSocialProof(ctx),
+      messages
+    );
+    if ("error" in r) return { error: r.error, code: r.code };
+    return { ok: true, social: r.value };
   }
+  const r = await creditedAction(
+    session.user.id,
+    "cover_text",
+    () => generateCoverText(kind, ctx),
+    messages
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, text: r.value };
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { aiHttpError } from "@/components/ai-error-text";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -460,6 +462,10 @@ export function WritingStudio({
         setInsufficient(true);
         return;
       }
+      if (res.status === 429) {
+        setMessage(aiHttpError(429, ""));
+        return;
+      }
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         setMessage(data.error ?? "Não foi possível continuar o capítulo.");
@@ -544,6 +550,10 @@ export function WritingStudio({
       });
       if (res.status === 402) {
         setInsufficient(true);
+        return;
+      }
+      if (res.status === 429) {
+        setMessage(aiHttpError(429, ""));
         return;
       }
       if (!res.ok || !res.body) {
@@ -652,6 +662,10 @@ export function WritingStudio({
       });
       if (res.status === 402) {
         setInsufficient(true);
+        return;
+      }
+      if (res.status === 429) {
+        setMessage(aiHttpError(429, ""));
         return;
       }
       const data = await res.json().catch(() => ({}));

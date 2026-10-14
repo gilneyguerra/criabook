@@ -1,5 +1,7 @@
 "use client";
 
+import { AiErrorText, aiHttpError } from "@/components/ai-error-text";
+
 import { useState } from "react";
 import Link from "next/link";
 import { Sparkles, Plus, X, Check, Loader2 } from "lucide-react";
@@ -68,9 +70,11 @@ export function PromptBuilder({
 
   async function suggest(kind: "logline" | "audience" | "tone") {
     setSuggesting(kind);
+    setError(null);
     const res = await suggestFieldAction(bookId, kind);
     setSuggesting(null);
     if (res?.ok && res.text) setEd(kind, res.text);
+    else if (res?.error) setError(res.error);
   }
   const [suggestions, setSuggestions] = useState<Selections>({});
   const [loadingCat, setLoadingCat] = useState<string | null>(null);
@@ -112,6 +116,11 @@ export function PromptBuilder({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoryKey: cat, context }),
       });
+      if (!res.ok) {
+        setError(aiHttpError(res.status, "Não foi possível sugerir agora."));
+        setSuggestions((s) => ({ ...s, [cat]: [] }));
+        return;
+      }
       const data = await res.json();
       setSuggestions((s) => ({ ...s, [cat]: data.suggestions ?? [] }));
     } catch {
@@ -429,7 +438,11 @@ export function PromptBuilder({
             </Link>
           </span>
         )}
-        {error && <span className="text-sm text-destructive">{error}</span>}
+        {error && (
+          <span className="text-sm text-destructive">
+            <AiErrorText text={error} />
+          </span>
+        )}
         <Link
           href="/dashboard"
           className="link-underline ml-auto text-sm text-muted-foreground"

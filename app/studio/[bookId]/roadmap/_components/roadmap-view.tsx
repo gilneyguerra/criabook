@@ -1,5 +1,7 @@
 "use client";
 
+import { AiErrorText } from "@/components/ai-error-text";
+
 import { useMemo, useState } from "react";
 import { Sparkles, Loader2, X } from "lucide-react";
 
@@ -102,7 +104,11 @@ export function RoadmapView({
             {beats.length ? "Regerar estrutura" : "Gerar estrutura"}
           </Button>
         )}
-        {message && <p className="text-sm text-destructive">{message}</p>}
+        {message && (
+          <p className="text-sm text-destructive">
+            <AiErrorText text={message} />
+          </p>
+        )}
       </div>
 
       {nodes.length > 0 ? (

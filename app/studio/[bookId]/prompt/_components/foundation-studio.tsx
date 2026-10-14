@@ -1,5 +1,7 @@
 "use client";
 
+import { AiErrorText } from "@/components/ai-error-text";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Loader2, Wand2 } from "lucide-react";
@@ -87,7 +89,7 @@ export function FoundationStudio({
       {message && (
         <p className="mb-4 inline-flex items-center gap-2 rounded-md bg-secondary/60 px-3 py-2 text-sm">
           <Sparkles className="size-4 text-indigo-500" />
-          {message}
+          <AiErrorText text={message} />
         </p>
       )}
 

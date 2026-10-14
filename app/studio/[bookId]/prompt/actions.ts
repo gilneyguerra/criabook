@@ -18,6 +18,7 @@ import {
 } from "@/lib/ai/claude";
 import { bookContextText } from "@/lib/ai/prompts";
 import { indexBibleEntry } from "@/lib/ai/rag";
+import { creditedAction } from "@/lib/ai/with-credits";
 
 export type BriefPayload = {
   title: string;
@@ -143,10 +144,14 @@ export async function generateWorld(bookId: string) {
   if (!book.logline?.trim() && !book.genre?.trim())
     return { error: "Preencha ao menos logline ou gênero na Base primeiro." };
 
-  const gen = await generateBible(ctxFromBook(book));
-  const count = await persistBible(bookId, gen);
-  if (!count) return { error: "Não foi possível gerar agora. Tente novamente." };
-  return { ok: true, count };
+  const r = await creditedAction(
+    session.user.id,
+    "bible",
+    async () => persistBible(bookId, await generateBible(ctxFromBook(book))),
+    { empty: "Não foi possível gerar agora. Tente novamente." }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, count: r.value };
 }
 
 /** Gera só uma seção da Bíblia. */
@@ -156,10 +161,14 @@ export async function generateBibleSection(bookId: string, section: BibleSection
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
 
-  const gen = await generateBible(ctxFromBook(book), section);
-  const count = await persistBible(bookId, gen);
-  if (!count) return { error: "Não foi possível gerar agora. Tente novamente." };
-  return { ok: true, count };
+  const r = await creditedAction(
+    session.user.id,
+    "bible",
+    async () => persistBible(bookId, await generateBible(ctxFromBook(book), section)),
+    { empty: "Não foi possível gerar agora. Tente novamente." }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, count: r.value };
 }
 
 /** Sugere o texto de um campo da Base (não persiste; o cliente preenche). */
@@ -171,7 +180,12 @@ export async function suggestFieldAction(
   if (!session) return { error: "Não autenticado." };
   const book = await getBookForUser(bookId, session.user.id).catch(() => null);
   if (!book) return { error: "Livro não encontrado." };
-  const text = await suggestField(kind, ctxFromBook(book));
-  if (!text) return { error: "Não foi possível sugerir agora." };
-  return { ok: true, text };
+  const r = await creditedAction(
+    session.user.id,
+    "suggest",
+    () => suggestField(kind, ctxFromBook(book)),
+    { empty: "Não foi possível sugerir agora." }
+  );
+  if ("error" in r) return { error: r.error, code: r.code };
+  return { ok: true, text: r.value };
 }

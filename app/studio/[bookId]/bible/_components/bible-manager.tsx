@@ -8,6 +8,7 @@ import { addBibleEntry, removeBibleEntryAction } from "../actions";
 import { generateBibleSection } from "@/app/studio/[bookId]/prompt/actions";
 import type { BibleType } from "@/lib/db/queries";
 import type { BibleSection } from "@/lib/ai/claude";
+import { AiErrorText } from "@/components/ai-error-text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -115,6 +116,7 @@ export function BibleManager({
   const [forms, setForms] = useState<Record<string, Record<string, string>>>({});
   const [pending, setPending] = useState<string | null>(null);
   const [genSection, setGenSection] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   function setField(type: string, k: string, v: string) {
     setForms((f) => ({ ...f, [type]: { ...(f[type] ?? {}), [k]: v } }));
@@ -122,9 +124,11 @@ export function BibleManager({
 
   async function generate(type: BibleType) {
     setGenSection(type);
+    setAiError(null);
     const res = await generateBibleSection(bookId, type as BibleSection);
     setGenSection(null);
     if (res?.ok) router.refresh();
+    else if (res?.error) setAiError(res.error);
   }
 
   async function add(section: Section) {
@@ -149,6 +153,11 @@ export function BibleManager({
 
   return (
     <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl px-6 py-8"}>
+      {aiError && (
+        <p className="mb-4 rounded-md bg-secondary/60 px-3 py-2 text-sm text-destructive">
+          <AiErrorText text={aiError} />
+        </p>
+      )}
       <div className="mb-8">
         <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-widest text-indigo-500">
           <BookText className="size-4" /> Bíblia da história

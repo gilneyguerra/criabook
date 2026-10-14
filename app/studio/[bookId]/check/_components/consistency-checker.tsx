@@ -1,5 +1,7 @@
 "use client";
 
+import { AiErrorText } from "@/components/ai-error-text";
+
 import { useMemo, useState } from "react";
 import {
   ShieldCheck,
@@ -148,7 +150,11 @@ export function ConsistencyChecker({
         </div>
       </div>
 
-      {message && <p className="mt-4 text-sm text-foreground/80">{message}</p>}
+      {message && (
+        <p className="mt-4 text-sm text-foreground/80">
+          <AiErrorText text={message} />
+        </p>
+      )}
 
       {/* Issues */}
       <div className="mt-6">

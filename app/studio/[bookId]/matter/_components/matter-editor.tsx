@@ -6,6 +6,7 @@ import { FileText, Sparkles, Loader2 } from "lucide-react";
 import { assembleMatter, type Matter } from "@/lib/matter";
 import { saveMatter, suggestMatter } from "../actions";
 import type { MatterKind } from "@/lib/ai/claude";
+import { AiErrorText } from "@/components/ai-error-text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,15 +40,19 @@ export function MatterEditor({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [suggesting, setSuggesting] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   async function suggest(k: keyof Matter, kind: MatterKind) {
     setSuggesting(kind);
+    setAiError(null);
     const res = (await suggestMatter(bookId, kind)) as {
       ok?: boolean;
       text?: string;
+      error?: string;
     };
     setSuggesting(null);
     if (res?.ok && res.text) set(k, res.text);
+    else if (res?.error) setAiError(res.error);
   }
 
   const year = new Date().getFullYear();
@@ -72,6 +77,11 @@ export function MatterEditor({
     <div className="mx-auto grid w-full max-w-5xl gap-8 px-6 py-8 lg:grid-cols-2">
       {/* Formulário */}
       <div className="flex flex-col gap-4">
+        {aiError && (
+          <p className="rounded-md bg-secondary/60 px-3 py-2 text-sm text-destructive">
+            <AiErrorText text={aiError} />
+          </p>
+        )}
         <div>
           <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-widest text-indigo-500">
             <FileText className="size-4" /> Páginas do livro
