@@ -16,6 +16,26 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
   },
+  // Rate limit por IP em banco (serverless não compartilha memória entre
+  // instâncias). Janela em segundos.
+  rateLimit: {
+    enabled: true,
+    storage: "database",
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 3600, max: 3 },
+      "/request-password-reset": { window: 3600, max: 3 },
+      "/send-verification-email": { window: 3600, max: 3 },
+    },
+  },
+  advanced: {
+    // A Vercel sobrescreve estes cabeçalhos com o IP real do cliente (não
+    // falsificáveis). Sem IP resolvido, o better-auth junta TODOS num único
+    // contador por rota — o limite de login valeria para o site inteiro.
+    ipAddress: {
+      ipAddressHeaders: ["x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"],
+    },
+  },
   databaseHooks: {
     user: {
       create: {
