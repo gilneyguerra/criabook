@@ -1,5 +1,6 @@
 -- Renomeia constraints do schema legado para os nomes da baseline do Drizzle.
--- Idempotente: só renomeia se o nome antigo existir.
+-- Idempotente: só renomeia se o nome antigo existir no schema public
+-- (outros schemas, como neon_auth, têm tabelas homônimas e ficam intactos).
 DO $$
 DECLARE r record;
 BEGIN
@@ -38,7 +39,8 @@ BEGIN
     ('world_state_snapshots', 'world_state_snapshots_book_id_fkey', 'world_state_snapshots_book_id_books_id_fk')
   ) AS v(tbl, old_name, new_name) LOOP
     IF EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class k ON k.oid = c.conrelid
-               WHERE k.relname = r.tbl AND c.conname = r.old_name) THEN
+               WHERE k.relnamespace = 'public'::regnamespace
+                 AND k.relname = r.tbl AND c.conname = r.old_name) THEN
       EXECUTE format('ALTER TABLE public.%I RENAME CONSTRAINT %I TO %I', r.tbl, r.old_name, r.new_name);
     END IF;
   END LOOP;
