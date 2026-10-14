@@ -9,6 +9,7 @@ import {
 } from "@/lib/ai/metering";
 import {
   InsufficientCreditsError,
+  getBalance,
   refundCredits,
   reserveCredits,
   settleCredits,
@@ -23,7 +24,7 @@ export type MeteredOp = {
   /** Roda `fn` medindo as chamadas de IA feitas dentro dela. */
   run<T>(fn: () => Promise<T>): Promise<T>;
   /** Acerta pelo consumo medido. Idempotente. Retorna o custo cobrado. */
-  settle(): Promise<{ charged: number; balance: number | null }>;
+  settle(): Promise<{ charged: number; balance: number }>;
   /** Estorna a reserva inteira. Idempotente. */
   refund(): Promise<void>;
 };
@@ -51,12 +52,12 @@ export async function startMetered(
     run: (fn) => runWithMeter(meter, fn),
     async settle() {
       const charged = meter.credits();
-      if (closed) return { charged, balance: null };
+      if (closed) return { charged, balance: await getBalance(userId) };
       closed = true;
       const out = await settleCredits(reservation, charged);
       return {
         charged: out.applied ? reservation.amount - out.delta : charged,
-        balance: out.balance,
+        balance: out.balance ?? (await getBalance(userId)),
       };
     },
     async refund() {

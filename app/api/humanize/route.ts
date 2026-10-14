@@ -3,7 +3,11 @@ import { headers } from "next/headers";
 
 import { auth } from "@/lib/auth";
 import { createHumanizeStream, friendlyAiError } from "@/lib/ai/claude";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import {
+  creditErrorResponse,
+  startMetered,
+  type MeteredOp,
+} from "@/lib/ai/with-credits";
 import { normalize } from "@/lib/text/normalizer";
 import { getLayoutProfile } from "@/lib/layout/profile";
 
@@ -26,29 +30,26 @@ export async function POST(request: Request) {
     );
   }
 
-  // Estimativa grosseira de tokens do trecho (~4 chars/token) para pré-checagem.
-  const estTokens = Math.ceil(input.length / 4);
-  const estimate = creditsForUsage({
-    tokensIn: estTokens,
-    tokensOut: estTokens,
-  });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) {
-    return NextResponse.json(
-      { error: "Créditos insuficientes." },
-      { status: 402 }
-    );
+  // Reserva antes de abrir o stream; acerto ou estorno no finally.
+  let metered: MeteredOp;
+  try {
+    metered = await startMetered(session.user.id, "humanize");
+  } catch (err) {
+    const res = creditErrorResponse(err);
+    if (res) return res;
+    throw err;
   }
 
-  const stream = createHumanizeStream({ text: input });
+  // Criado dentro do meter: o usage do stream entra no acerto.
+  const stream = await metered.run(async () => createHumanizeStream({ text: input }));
   if (!stream) {
+    await metered.refund();
     return NextResponse.json(
       { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
       { status: 503 }
     );
   }
 
-  const userId = session.user.id;
   const encoder = new TextEncoder();
   // Perfil default só para as regras de TEXTO (locale pt-BR) — idênticas em
   // todos os presets, então não precisamos do bookId aqui.
@@ -59,29 +60,27 @@ export async function POST(request: Request) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       let full = "";
+      let settled = false;
       try {
         stream.on("text", (delta: string) => {
           full += delta;
           send({ type: "delta", text: delta });
         });
-        const finalMsg = await stream.finalMessage();
-        const usage = finalMsg.usage;
-        const credits = creditsForUsage({
-          tokensIn: usage.input_tokens,
-          tokensOut: usage.output_tokens,
-        });
-        await debitCredits(userId, credits, "humanizar trecho");
+        await stream.finalMessage();
+        const { charged, balance } = await metered.settle();
+        settled = true;
         // Saída normalizada: o cliente substitui a seleção por este texto.
         send({
           type: "done",
           text: normalize(full, profile),
-          debited: credits,
-          balance: balance - credits,
+          debited: charged,
+          balance,
         });
-        controller.close();
       } catch (err) {
         console.error("humanize error", err);
         send({ type: "error", message: friendlyAiError(err) });
+      } finally {
+        if (!settled) await metered.refund();
         controller.close();
       }
     },
