@@ -4,7 +4,11 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getBookForUser, upsertCover, type CoverData } from "@/lib/db/queries";
 import { generateImage, hasKie } from "@/lib/ai/kie";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import {
+  creditErrorResponse,
+  startMetered,
+  type MeteredOp,
+} from "@/lib/ai/with-credits";
 import { persistFromUrl } from "@/lib/storage/blob";
 
 // Geração de arte é lenta (modelo de imagem) — precisa da janela de 60s, igual
@@ -41,10 +45,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const cost = creditsForUsage({ images: 1 });
-  const balance = await getBalance(session.user.id);
-  if (balance < cost) {
-    return NextResponse.json({ error: "Créditos insuficientes." }, { status: 402 });
+  // Reserva antes de chamar o provedor; qualquer falha abaixo estorna tudo.
+  let metered: MeteredOp;
+  try {
+    metered = await startMetered(session.user.id, "cover_art");
+  } catch (err) {
+    const res = creditErrorResponse(err);
+    if (res) return res;
+    throw err;
   }
 
   const side: "front" | "back" = which === "back" ? "back" : "front";
@@ -66,7 +74,9 @@ export async function POST(request: Request) {
       imageSize: "portrait_4_3",
       style: realistic ? "REALISTIC" : "DESIGN",
     });
+    metered.meter.recordImages(1);
   } catch (e) {
+    await metered.refund();
     const detail = e instanceof Error ? e.message : String(e);
     console.error("cover art error:", detail);
     return NextResponse.json(
@@ -75,20 +85,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const stored = await persistFromUrl(`covers/${bookId}/${side}`, url);
-
-  const artField =
-    side === "front" ? { frontArtUrl: stored } : { backArtUrl: stored };
-  await upsertCover(bookId, {
-    ...artField,
-    artPrompt: prompt,
-    style: style || null,
-    palette: palette ? { description: palette } : null,
-  } as Partial<CoverData>);
-
+  let stored: string;
   try {
-    await debitCredits(session.user.id, cost, "arte da capa");
-  } catch {}
+    stored = await persistFromUrl(`covers/${bookId}/${side}`, url);
+    const artField =
+      side === "front" ? { frontArtUrl: stored } : { backArtUrl: stored };
+    await upsertCover(bookId, {
+      ...artField,
+      artPrompt: prompt,
+      style: style || null,
+      palette: palette ? { description: palette } : null,
+    } as Partial<CoverData>);
+  } catch (err) {
+    await metered.refund();
+    throw err;
+  }
 
-  return NextResponse.json({ url: stored, balance: balance - cost });
+  const { balance } = await metered.settle();
+  return NextResponse.json({ url: stored, balance });
 }

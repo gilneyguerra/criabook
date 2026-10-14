@@ -8,7 +8,11 @@ import {
   addChapterImage,
 } from "@/lib/db/queries";
 import { generateImage, hasKie, KIE_MODEL } from "@/lib/ai/kie";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import {
+  creditErrorResponse,
+  startMetered,
+  type MeteredOp,
+} from "@/lib/ai/with-credits";
 import { persistFromUrl } from "@/lib/storage/blob";
 
 export const runtime = "nodejs";
@@ -41,12 +45,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Capítulo não encontrado." }, { status: 404 });
   }
 
-  const cost = creditsForUsage({ images: 1 });
-  const balance = await getBalance(session.user.id);
-  if (balance < cost) {
-    return NextResponse.json({ error: "Créditos insuficientes." }, { status: 402 });
-  }
-
   const base =
     typeof prompt === "string" && prompt.trim()
       ? prompt.trim().slice(0, 600)
@@ -54,10 +52,22 @@ export async function POST(request: Request) {
 
   const fullPrompt = `${base}. Ilustração editorial para livro de ${book.genre ?? "ficção"}, tom ${book.tone ?? "neutro"}; sem texto na imagem.`;
 
+  // Reserva antes de chamar o provedor; qualquer falha abaixo estorna tudo.
+  let metered: MeteredOp;
+  try {
+    metered = await startMetered(session.user.id, "image");
+  } catch (err) {
+    const res = creditErrorResponse(err);
+    if (res) return res;
+    throw err;
+  }
+
   let url: string;
   try {
     url = await generateImage(fullPrompt);
+    metered.meter.recordImages(1);
   } catch (e) {
+    await metered.refund();
     const detail = e instanceof Error ? e.message : String(e);
     console.error("ilustrar error:", detail);
     return NextResponse.json(
@@ -66,17 +76,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // Rehospeda no Blob (URLs da Kie expiram ~14 dias); a imagem fica inline no texto.
-  const stored = await persistFromUrl(`chapters/${bookId}/${chapter.id}-${Date.now()}`, url);
-
-  await addChapterImage(chapter.id, {
-    storagePath: stored,
-    prompt: fullPrompt,
-    model: KIE_MODEL,
-  });
+  let stored: string;
   try {
-    await debitCredits(session.user.id, cost, "geração de imagem");
-  } catch {}
+    // Rehospeda no Blob (URLs da Kie expiram ~14 dias); a imagem fica inline no texto.
+    stored = await persistFromUrl(`chapters/${bookId}/${chapter.id}-${Date.now()}`, url);
+    await addChapterImage(chapter.id, {
+      storagePath: stored,
+      prompt: fullPrompt,
+      model: KIE_MODEL,
+    });
+  } catch (err) {
+    await metered.refund();
+    throw err;
+  }
 
-  return NextResponse.json({ url: stored, balance: balance - cost });
+  const { balance } = await metered.settle();
+  return NextResponse.json({ url: stored, balance });
 }

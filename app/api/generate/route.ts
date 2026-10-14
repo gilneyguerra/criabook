@@ -16,7 +16,12 @@ import {
   friendlyAiError,
 } from "@/lib/ai/claude";
 import { bookContextText } from "@/lib/ai/prompts";
-import { getBalance, debitCredits, creditsForUsage } from "@/lib/credits";
+import {
+  creditErrorResponse,
+  startMetered,
+  type MeteredOp,
+} from "@/lib/ai/with-credits";
+import type { AiOp } from "@/lib/ai/metering";
 import { textToDoc, wordCount } from "@/lib/tiptap";
 import { summarizeChapter, indexChapter } from "@/lib/ai/rag";
 import { normalize } from "@/lib/text/normalizer";
@@ -49,15 +54,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Livro não encontrado." }, { status: 404 });
   }
 
-  const estimate = creditsForUsage({ tokensIn: 1500, tokensOut: 3500 });
-  const balance = await getBalance(session.user.id);
-  if (balance < estimate) {
-    return NextResponse.json(
-      { error: "Créditos insuficientes para gerar." },
-      { status: 402 }
-    );
-  }
-
   const userId = session.user.id;
   const profile = getLayoutProfile(book.layoutProfileId, book.type);
   const briefText = bookContextText({
@@ -72,6 +68,19 @@ export async function POST(request: Request) {
     brief: book.brief as Record<string, string[]>,
   });
   const encoder = new TextEncoder();
+  // Reserva a estimativa da operação antes de abrir o stream. Chamada o mais
+  // tarde possível (depois de montar o contexto) para não deixar reserva
+  // pendurada se algo falhar antes da IA.
+  async function reserve(op: AiOp): Promise<MeteredOp | NextResponse> {
+    try {
+      return await startMetered(userId, op);
+    } catch (err) {
+      const res = creditErrorResponse(err);
+      if (res) return res;
+      throw err;
+    }
+  }
+
   const sseHeaders = {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -100,13 +109,18 @@ export async function POST(request: Request) {
     const isOpeningOfBook = !existingForCtx.some(
       (c) => c.index < curIndex && (c.contentText ?? "").trim()
     );
-    const stream = createContinueStream({
-      briefText: anchoredBrief,
-      context: ctx,
-      index: curIndex,
-      isOpeningOfBook,
-    });
+    const metered = await reserve("continue");
+    if (metered instanceof NextResponse) return metered;
+    const stream = await metered.run(async () =>
+      createContinueStream({
+        briefText: anchoredBrief,
+        context: ctx,
+        index: curIndex,
+        isOpeningOfBook,
+      })
+    );
     if (!stream) {
+      await metered.refund();
       return NextResponse.json(
         { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
         { status: 503 }
@@ -128,19 +142,13 @@ export async function POST(request: Request) {
         const send = (obj: unknown) =>
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
         let added = "";
+        let settled = false;
         try {
           stream.on("text", (delta: string) => {
             added += delta;
             send({ type: "delta", text: delta });
           });
           const finalMsg = await stream.finalMessage();
-          const credits = creditsForUsage({
-            tokensIn: finalMsg.usage.input_tokens,
-            tokensOut: finalMsg.usage.output_tokens,
-          });
-          try {
-            await debitCredits(userId, credits, "continuar capítulo");
-          } catch {}
 
           // Concatena ao conteúdo anterior e alimenta o motor de consistência
           // (mesmo pipeline da geração completa), se houver capítulo-alvo.
@@ -149,7 +157,8 @@ export async function POST(request: Request) {
             const complete = baseFull ? `${baseFull}\n\n${added}` : added;
             const { clean, novoFatos, lacunas } = stripMarkers(complete);
             normalized = normalize(clean, profile);
-            const summary = await summarizeChapter(normalized);
+            const text = normalized;
+            const summary = await metered.run(() => summarizeChapter(text));
             await completeChapter(targetChapter.id, {
               contentJson: textToDoc(normalized),
               contentText: normalized,
@@ -168,15 +177,15 @@ export async function POST(request: Request) {
               );
             } catch {}
             try {
-              await persistExtraction({
+              await metered.run(() => persistExtraction({
                 bookId,
                 index: curIndex,
-                cleanText: normalized,
+                cleanText: text,
                 bookContext: briefText,
                 novoFatos,
                 lacunas,
                 chapterSummary: summary,
-              });
+              }));
             } catch {}
           }
 
@@ -199,20 +208,23 @@ export async function POST(request: Request) {
             } catch {}
           }
 
+          const { charged, balance } = await metered.settle();
+          settled = true;
           send({
             type: "done",
-            debited: credits,
-            balance: balance - credits,
+            debited: charged,
+            balance,
             chapterId: targetChapter?.id,
             contentText: normalized ?? undefined,
             totalWords,
             target,
             targetReached,
           });
-          controller.close();
         } catch (err) {
           console.error("continue error", err);
           send({ type: "error", message: friendlyAiError(err) });
+        } finally {
+          if (!settled) await metered.refund();
           controller.close();
         }
       },
@@ -232,19 +244,31 @@ export async function POST(request: Request) {
     existing
   );
 
-  const stream = createChapterStream({
-    briefText: anchoredBrief,
-    index,
-    prevContext,
-  });
+  const metered = await reserve("chapter");
+  if (metered instanceof NextResponse) return metered;
+  const stream = await metered.run(async () =>
+    createChapterStream({
+      briefText: anchoredBrief,
+      index,
+      prevContext,
+    })
+  );
   if (!stream) {
+    await metered.refund();
     return NextResponse.json(
       { error: "IA não configurada (defina ANTHROPIC_API_KEY)." },
       { status: 503 }
     );
   }
 
-  const chapter = await createChapter(bookId, index, `Capítulo ${index}`);
+  let chapter: Awaited<ReturnType<typeof createChapter>>;
+  try {
+    chapter = await createChapter(bookId, index, `Capítulo ${index}`);
+  } catch (err) {
+    stream.abort();
+    await metered.refund();
+    throw err;
+  }
   const priorWords = existing.reduce(
     (acc, c) => acc + wordCount(c.contentText ?? ""),
     0
@@ -256,6 +280,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      let settled = false;
       try {
         stream.on("text", (delta: string) => {
           fullText += delta;
@@ -263,10 +288,6 @@ export async function POST(request: Request) {
         });
         const finalMsg = await stream.finalMessage();
         const usage = finalMsg.usage;
-        const credits = creditsForUsage({
-          tokensIn: usage.input_tokens,
-          tokensOut: usage.output_tokens,
-        });
 
         // Motor de consistência: remove [NOVO_FATO]/[LACUNA] (capturando-os);
         // Camada A: normaliza tipograficamente antes de persistir (o stream ao
@@ -274,7 +295,7 @@ export async function POST(request: Request) {
         const { clean, novoFatos, lacunas } = stripMarkers(fullText);
         const normalized = normalize(clean, profile);
 
-        const summary = await summarizeChapter(normalized);
+        const summary = await metered.run(() => summarizeChapter(normalized));
         await completeChapter(chapter.id, {
           contentJson: textToDoc(normalized),
           contentText: normalized,
@@ -292,7 +313,7 @@ export async function POST(request: Request) {
         } catch {}
         // Atualização de estado (extração síncrona, Haiku): ledgers + snapshot.
         try {
-          await persistExtraction({
+          await metered.run(() => persistExtraction({
             bookId,
             index,
             cleanText: normalized,
@@ -300,11 +321,10 @@ export async function POST(request: Request) {
             novoFatos,
             lacunas,
             chapterSummary: summary,
-          });
+          }));
         } catch {}
-        try {
-          await debitCredits(userId, credits, "geração de capítulo", chapter.id);
-        } catch {}
+        const { charged, balance } = await metered.settle();
+        settled = true;
 
         const totalWords = priorWords + wordCount(normalized);
         const targetReached = target > 0 && totalWords >= target;
@@ -320,13 +340,14 @@ export async function POST(request: Request) {
           totalWords,
           target,
           targetReached,
-          debited: credits,
-          balance: balance - credits,
+          debited: charged,
+          balance,
         });
-        controller.close();
       } catch (err) {
         console.error("generate error", err);
         send({ type: "error", message: friendlyAiError(err) });
+      } finally {
+        if (!settled) await metered.refund();
         controller.close();
       }
     },

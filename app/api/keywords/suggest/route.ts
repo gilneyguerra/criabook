@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { suggestKeywords } from "@/lib/ai/claude";
 import { getCategory } from "@/lib/keywords";
+import { creditErrorResponse, withCredits } from "@/lib/ai/with-credits";
+import { InsufficientCreditsError } from "@/lib/credits";
 
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -18,16 +20,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const suggestions = await suggestKeywords({
-      categoryLabel: category.label,
-      context: typeof context === "string" ? context : undefined,
+    // Vazio (sem API key ou resposta vazia) lança → estorna e cai no fallback.
+    const suggestions = await withCredits(session.user.id, "suggest", async () => {
+      const out = await suggestKeywords({
+        categoryLabel: category.label,
+        context: typeof context === "string" ? context.slice(0, 2000) : undefined,
+      });
+      if (out.length === 0) throw new Error("sem sugestões");
+      return out;
     });
-    // Sem API key (ou resposta vazia) → cai no fallback estático.
-    if (suggestions.length > 0) {
-      return NextResponse.json({ suggestions });
-    }
-  } catch {
-    // Falha de IA → fallback (não bloqueia o usuário).
+    return NextResponse.json({ suggestions });
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) return creditErrorResponse(err)!;
+    // Falha de IA → fallback estático (não bloqueia o usuário; nada cobrado).
   }
 
   return NextResponse.json({ suggestions: category.fallback, fallback: true });
