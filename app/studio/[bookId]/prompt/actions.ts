@@ -150,7 +150,7 @@ export async function generateWorld(bookId: string) {
     async () => persistBible(bookId, await generateBible(ctxFromBook(book))),
     { empty: "Não foi possível gerar agora. Tente novamente." }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, count: r.value };
 }
 
@@ -167,7 +167,7 @@ export async function generateBibleSection(bookId: string, section: BibleSection
     async () => persistBible(bookId, await generateBible(ctxFromBook(book), section)),
     { empty: "Não foi possível gerar agora. Tente novamente." }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, count: r.value };
 }
 
@@ -186,6 +186,6 @@ export async function suggestFieldAction(
     () => suggestField(kind, ctxFromBook(book)),
     { empty: "Não foi possível sugerir agora." }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, text: r.value };
 }

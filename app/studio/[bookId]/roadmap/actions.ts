@@ -58,7 +58,7 @@ export async function generateStructureAction(bookId: string) {
       failure: "Falha ao gerar a estrutura.",
     }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
 
   const saved = await getStoryBeats(bookId);
   return {

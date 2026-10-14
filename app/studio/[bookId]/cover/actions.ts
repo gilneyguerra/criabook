@@ -96,7 +96,7 @@ export async function suggestArtAction(bookId: string) {
   const r = await creditedAction(session.user.id, "suggest", () => suggestCoverArt(ctx), {
     empty: "Não foi possível sugerir agora.",
   });
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, text: r.value };
 }
 
@@ -110,7 +110,7 @@ export async function suggestStyleAction(bookId: string) {
   const r = await creditedAction(session.user.id, "suggest", () => suggestCoverStyle(ctx), {
     empty: "Não foi possível sugerir agora.",
   });
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, ...r.value };
 }
 
@@ -138,7 +138,7 @@ export async function suggestBackArtAction(
       ),
     { empty: "Não foi possível sugerir agora." }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, text: r.value };
 }
 
@@ -170,7 +170,7 @@ export async function generateCoverTextAction(
       () => generateSocialProof(ctx),
       messages
     );
-    if ("error" in r) return r;
+    if ("error" in r) return { error: r.error, code: r.code };
     return { ok: true, social: r.value };
   }
   const r = await creditedAction(
@@ -179,6 +179,6 @@ export async function generateCoverTextAction(
     () => generateCoverText(kind, ctx),
     messages
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, text: r.value };
 }

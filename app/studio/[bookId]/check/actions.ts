@@ -59,7 +59,7 @@ export async function runConsistencyCheck(bookId: string) {
     async () => ({ issues: await runContinuityCheck(bookId) }),
     { empty: "Falha ao revisar. Tente novamente." }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   const { issues } = r.value;
 
   await replaceOpenIssues(
@@ -153,7 +153,7 @@ export async function correctPassage(bookId: string, issueId: string) {
       failure: "Não foi possível corrigir agora. Tente de novo.",
     }
   );
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
 
   try {
     await indexChapter(bookId, chapter.id, r.value);

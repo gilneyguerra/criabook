@@ -40,6 +40,6 @@ export async function suggestMatter(bookId: string, kind: MatterKind) {
   const r = await creditedAction(session.user.id, "suggest", () => suggestMatterField(kind, ctx), {
     empty: "Não foi possível sugerir agora.",
   });
-  if ("error" in r) return r;
+  if ("error" in r) return { error: r.error, code: r.code };
   return { ok: true, text: r.value };
 }
