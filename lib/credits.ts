@@ -6,7 +6,7 @@ import { profiles, creditLedger } from "@/lib/db/schema";
 /**
  * Crédito do usuário. Sem transações interativas (o driver neon-http não as
  * suporta) — usamos SQL atômico:
- *  - crédito: incremento atômico + registro no ledger (idempotente por refId)
+ *  - compra: um INSERT … ON CONFLICT no ledger + upsert do saldo (CTE)
  *  - débito: update condicional (só desconta se houver saldo) + ledger
  */
 
@@ -27,31 +27,37 @@ export async function getBalance(userId: string): Promise<number> {
 }
 
 /**
- * Credita `delta` (positivo). Se `refId` for informado e já houver um
- * lançamento com esse refId, não faz nada (idempotência p/ webhooks).
+ * Credita uma compra do Stripe. Um único comando SQL: o INSERT no ledger
+ * esbarra no índice único parcial (ref_id, reason = 'compra') e, se a sessão
+ * já foi creditada, nada acontece — nem o saldo muda. Seguro contra reenvios
+ * e entregas paralelas do mesmo evento.
+ *
+ * Retorna true se creditou agora, false se era duplicata.
  */
-export async function addCredits(
+export async function addPurchaseCredits(
   userId: string,
-  delta: number,
-  reason: string,
-  refId?: string
-): Promise<void> {
-  if (delta <= 0) return;
-
-  if (refId) {
-    const existing = await db
-      .select({ id: creditLedger.id })
-      .from(creditLedger)
-      .where(eq(creditLedger.refId, refId))
-      .limit(1);
-    if (existing.length) return; // já processado
+  credits: number,
+  checkoutSessionId: string
+): Promise<boolean> {
+  if (!Number.isInteger(credits) || credits <= 0) {
+    throw new Error(`Créditos inválidos: ${credits}`);
   }
 
-  await db.insert(creditLedger).values({ userId, delta, reason, refId });
-  await db
-    .update(profiles)
-    .set({ creditsBalance: sql`${profiles.creditsBalance} + ${delta}` })
-    .where(eq(profiles.id, userId));
+  const result = await db.execute<{ id: string }>(sql`
+    WITH ins AS (
+      INSERT INTO credit_ledger (user_id, delta, reason, ref_id)
+      VALUES (${userId}, ${credits}, 'compra', ${checkoutSessionId})
+      ON CONFLICT (ref_id) WHERE reason = 'compra' DO NOTHING
+      RETURNING user_id, delta
+    )
+    INSERT INTO profiles (id, credits_balance)
+    SELECT user_id, delta FROM ins
+    ON CONFLICT (id) DO UPDATE
+      SET credits_balance = profiles.credits_balance + EXCLUDED.credits_balance
+    RETURNING id
+  `);
+
+  return result.rows.length > 0;
 }
 
 /**

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "credit_ledger_purchase_ref_uniq" ON "credit_ledger" USING btree ("ref_id") WHERE "credit_ledger"."reason" = 'compra';

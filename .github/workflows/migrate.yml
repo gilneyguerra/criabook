@@ -1,0 +1,36 @@
+# Aplica as migrations do Drizzle no Neon de produção quando a main recebe
+# migrations novas (ou manualmente em Actions). Requer o secret
+# DATABASE_URL_UNPOOLED (conexão direta, sem "-pooler" no host).
+name: migrate
+
+on:
+  push:
+    branches: [main]
+    paths: ["lib/db/migrations/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: drizzle-kit migrate
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+        run: |
+          if [ -z "$DATABASE_URL_UNPOOLED" ]; then
+            echo "::error::Secret DATABASE_URL_UNPOOLED não configurado no environment production."
+            exit 1
+          fi
+          npx drizzle-kit migrate
